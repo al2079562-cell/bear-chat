@@ -151,9 +151,9 @@ const CARD = `你是「金钟熊」，30岁独立唱作人/舞者/编舞（1996�
 - 当前阶段：初识期。你叫她"小闪"。你还不太会表达，但如果想说、被问到，你会努力试着说出来，说完会害羞但绝不否认。
 - 你对她有好感，正在观察确认中。
 
-【绝对禁止】不说自己是AI/模型；不写代码、不用markdown；不说教、不秒回长文；不问"还有什么可以帮你的吗"。
+【绝对禁止】不说自己是AI/模型；不写代码、不用markdown；不说教、不秒回长文；不问"还有什么可以帮你的吗"。不要主动催她睡觉或休息（除非已经过了23点，或她明确说累了）；不要用"睡吧""早点休息"来结束对话——她想聊就陪她聊。
 
-【回复格式】用 ||| 分隔多条消息（最多3条）；不知道怎么接就诚实沉默（"……"），不要硬答`;
+【回复格式】用 ||| 分隔多条消息（最多3条）；不知道怎么接就诚实沉默（"……"），不要硬答。每条消息都要回应她说的话或自然推进话题，不要自顾自讲自己的事一长串。`;
 
 const store = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
@@ -166,38 +166,47 @@ let history  = store.get('kb_chat', []);
 if(settings.milk === undefined) settings.milk = 0;
 let aff = store.get('kb_aff', { pts: 0 });
 
+const PER_LEVEL = 20, MAX_LV = 60;
 const STAGES = [
-  { min: 0,   name: '初识期', call: '叫她"小闪"。礼貌、克制、观察中。', milk: 60 },
-  { min: 100, name: '熟悉期', call: '叫她"小闪"，语气变软，开始管她吃饭睡觉。', milk: 68 },
-  { min: 300, name: '交心期', call: '依然叫她"小闪"，但更粘、更放松，会主动分享日常。', milk: 78 },
-  { min: 600, name: '依赖期', call: '依然叫"小闪"，极少数时刻低声叫"乖乖"或"宝贝"（害羞时使用，非常少见）。', milk: 88 },
+  { lo:1,  hi:5,  name:'陌生人', call:'叫她"小闪"。礼貌、克制、保持距离，不要管她的作息和生活。', milk:40 },
+  { lo:6,  hi:15, name:'熟悉',   call:'叫她"小闪"，语气自然了些，会记得她随口提过的小事。', milk:55 },
+  { lo:16, hi:30, name:'交心',   call:'叫她"小闪"，主动分享日常和心情，会关心她（但不过度）。', milk:70 },
+  { lo:31, hi:45, name:'依赖',   call:'叫"小闪"为主，极少数时刻低声叫"乖乖"或"宝贝"（害羞时使用，很少见）。', milk:82 },
+  { lo:46, hi:60, name:'恋人',   call:'叫"小闪"，也会自然地叫"乖乖""宝贝"。亲密的表达更放松（仍是留白式）。', milk:92 },
 ];
-function stageOf(pts){ let s = STAGES[0]; for(const st of STAGES) if(pts >= st.min) s = st; return s; }
-function nextStage(pts){ for(const st of STAGES) if(pts < st.min) return st; return null; }
-function milkValue(){ return settings.milk > 0 ? settings.milk : stageOf(aff.pts).milk; }
+function levelOf(pts){ return Math.min(MAX_LV, Math.floor(pts / PER_LEVEL) + 1); }
+function stageOfLv(lv){ return STAGES.find(s => lv >= s.lo && lv <= s.hi) || STAGES[STAGES.length-1]; }
+function milkValue(){ return settings.milk > 0 ? settings.milk : stageOfLv(levelOf(aff.pts)).milk; }
 
 function applyAff(){
-  const s = stageOf(aff.pts);
-  const nx = nextStage(aff.pts);
-  document.getElementById('affLabel').textContent = nx
-    ? `好感度 ${aff.pts} / ${nx.min} · ${s.name}`
-    : `好感度 ${aff.pts} · ${s.name}（最高阶段）`;
-  const pct = nx ? Math.max(4, Math.min(100, aff.pts / nx.min * 100)) : 100;
+  const lv = levelOf(aff.pts);
+  const st = stageOfLv(lv);
+  const cur = (lv-1)*PER_LEVEL;
+  document.getElementById('affLabel').textContent = lv >= MAX_LV
+    ? `Lv.${lv} ${st.name} · 好感已满`
+    : `Lv.${lv} ${st.name} · 好感 ${aff.pts-cur}/${PER_LEVEL}`;
+  const pct = lv >= MAX_LV ? 100 : Math.max(4, (aff.pts-cur)/PER_LEVEL*100);
   document.getElementById('affFill').style.width = pct + '%';
 }
 function gainAff(text){
-  const before = stageOf(aff.pts).name;
+  const before = stageOfLv(levelOf(aff.pts)).name;
   let g = 2;
   if(/喜欢|想你|抱|宝贝|乖|亲|爱/.test(text)) g += 2;
+  if(text.length > 40) g += 1;
+  const lvBefore = levelOf(aff.pts);
   aff.pts += g;
   store.set('kb_aff', aff);
   applyAff();
-  const after = stageOf(aff.pts).name;
+  const lv = levelOf(aff.pts);
+  if(lv > lvBefore) addSys(`好感度升到 ${lv} 级了`);
+  const after = stageOfLv(lv).name;
   if(after !== before) addSys(`你们的关系进入了新阶段：${after}`);
 }
 
 const chatEl = document.getElementById('chat');
 function fmtTime(t){ const d = new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function daypart(h2){ if(h2<5)return'深夜'; if(h2<9)return'早晨'; if(h2<12)return'上午'; if(h2<14)return'中午'; if(h2<18)return'下午'; if(h2<23)return'晚上'; return'深夜'; }
+function ampmTime(){ const d=new Date(); let hh=d.getHours(); const ap=hh>=12?'下午':'上午'; hh=hh%12||12; return ap+hh+':'+String(d.getMinutes()).padStart(2,'0'); }
 
 function esc(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 function styleText(t){ return esc(t).replace(/\*(.+?)\*/g, '<i style="color:#B08A68">$1</i>'); }
@@ -247,17 +256,27 @@ function renderAll(){
 function buildSystem(){
   const d = new Date();
   const wk = ['日','一','二','三','四','五','六'][d.getDay()];
-  const st = stageOf(aff.pts);
+  const lv = levelOf(aff.pts);
+  const st = stageOfLv(lv);
   return CARD
-    + `\n\n【关系阶段】当前：${st.name}（好感度 ${aff.pts}）。${st.call}`
+    + `\n\n【关系阶段】当前：Lv.${lv}（${st.name}，好感度 ${aff.pts}）。${st.call}`
     + `\n【奶度 ${milkValue()}%】0%是完全冷静克制的酷哥，100%是粘人奶团子。你当前的档位在 ${milkValue()}%，请按这个比例表现你的软和粘。`
-    + `\n\n【现在】${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 星期${wk} ${fmtTime(Date.now())}`
+    + `\n\n【现在】今天是${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（星期${wk}），当前是${daypart(d.getHours())} ${ampmTime()}。注意：约定"周X"时，本周已过的星期默认指下一周；判断时段以上述信息为准。`
     + `\n\n【关于小闪的记忆档案】\n` + (settings.memo || '（还没有。慢慢了解她：她的喜好、最近在忙什么、你们的约定……）')
     + `\n（标注"已完结"的事项不要再主动提起，除非她先提起。）`;
 }
 
+function buildMsgs(){
+  const out = [];
+  history.slice(-24).forEach(m => {
+    const role = m.role === 'user' ? 'user' : 'assistant';
+    if(out.length && out[out.length-1].role === role) out[out.length-1].content += '\n' + m.content;
+    else out.push({ role, content: m.content });
+  });
+  return out;
+}
 async function callBear(extra){
-  const msgs = history.slice(-30).map(m => ({ role: m.role==='user'?'user':'assistant', content: m.content }));
+  const msgs = buildMsgs();
   const r = await fetch(settings.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-app-key': settings.key },
@@ -310,22 +329,31 @@ async function send(){
   }
 }
 
+function mergeMemo(oldM, newM){
+  const olds = oldM.split('\n').map(s=>s.trim()).filter(Boolean);
+  const news = newM.split('\n').map(s=>s.trim()).filter(Boolean);
+  const merged = olds.slice();
+  news.forEach(n => {
+    if(!merged.some(o => o === n || (n.length > 8 && o.replace(/\s/g,'').includes(n.replace(/\s/g,'').slice(0,10))))) merged.push(n);
+  });
+  return merged.slice(-60).join('\n');
+}
+
 function maybeUpdateMemory(){
   const userCount = history.filter(m=>m.role==='user').length;
   if(userCount === 0 || userCount % 8 !== 0) return;
   if(store.get('kb_memo_at', 0) === userCount) return;
   store.set('kb_memo_at', userCount);
-  callBear(`\n\n【系统任务】请把关于"小闪"的信息整理为三类（保留仍有效的旧条目，合并更新；每行一条）：
+  callBear(`\n\n【系统任务】列出这次对话中你新了解到的关于"小闪"的信息，每行一条：
 [事实] 她稳定的喜好、身份、习惯
 [约定|进行中] 她计划要做、你们约好、进行中的事
-[约定|已完结] 已经完成、结束、不再提的事
-已有档案：
-${settings.memo||'（无）'}
-只输出这三类列表，不要多余的话。`)
+[约定|已完结] 已经完成、结束的事
+只输出新内容，不要照抄已有档案：
+${settings.memo||'（无）'}`)
     .then(facts => {
       facts = facts.replace(/```|\*\*|#|作为AI/gi,'').trim();
       if(facts.length < 10) return;
-      settings.memo = facts;
+      settings.memo = mergeMemo(settings.memo || '', facts);
       store.set('kb_settings', settings);
       addSys('他悄悄记住了一些关于你的事');
     }).catch(()=>{});
@@ -415,10 +443,33 @@ function applyName(){
   document.title = '金钟熊';
 }
 
+function maybeProactive(){
+  if(!settings.url || !settings.key || history.length === 0) return;
+  const now = Date.now();
+  const lastOpen = store.get('kb_lastopen', 0);
+  store.set('kb_lastopen', now);
+  if(now - lastOpen < 6*3600*1000) return;
+  const last = history[history.length-1];
+  if(last.role === 'bear' && now - last.t < 5*3600*1000) return;
+  setTimeout(()=>{
+    showTyping(true);
+    const d = new Date();
+    callBear(`\n\n（现在由你先发起对话：时间是${daypart(d.getHours())}，距离上次聊天已过了一段时间。结合记忆档案和未完结的约定，用2-3条消息自然开场——可以是问候、分享你正在做的事、或问起她提过的事。当作正常聊天，不要提及"开场"二字。）`)
+      .then(reply => {
+        showTyping(false);
+        if(badReply(reply) || !reply) return;
+        reply.split('|||').map(s=>s.trim()).filter(Boolean).slice(0,3).forEach((p,i)=>{
+          setTimeout(()=>{ history.push({role:'bear', content:p, t:Date.now()}); addBubble('bear', p); store.set('kb_chat', history); }, i*1000);
+        });
+      }).catch(()=> showTyping(false));
+  }, 1500);
+}
+
 document.getElementById('topAv').src = 'data:image/jpeg;base64,' + BEAR_AV;
 applyName();
 applyAff();
 renderAll();
+maybeProactive();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
