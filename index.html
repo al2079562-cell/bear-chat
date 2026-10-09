@@ -285,7 +285,7 @@ function buildSystem(){
   return CARD
     + `\n\n【关系阶段】当前：Lv.${lv}（${st.name}，好感度 ${aff.pts}）。${st.call}`
     + `\n【奶度 ${milkValue()}%】0%是完全冷静克制的酷哥，100%是粘人奶团子。你当前的档位在 ${milkValue()}%，请按这个比例表现你的软和粘。`
-    + `\n\n【现在】今天是${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（星期${wk}），当前是${daypart(d.getHours())} ${ampmTime()}。注意：约定"周X"时，本周已过的星期默认指下一周；判断时段以上述信息为准。`
+    + `\n\n【现在】今天是${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（星期${wk}），当前是${daypart(d.getHours())} ${ampmTime()}。注意：约定"周X"时，本周已过的星期默认指下一周；判断时段以上述信息为准；谈论未来的约定必须用"下周三要去看展"这类将来时，绝不允许把还没发生的事说成已经发生。`
     + `\n\n【关于小闪的记忆档案】\n` + (settings.memo || '（还没有。慢慢了解她：她的喜好、最近在忙什么、你们的约定……）')
     + `\n（标注"已完结"的事项不要再主动提起，除非她先提起。）`;
 }
