@@ -152,6 +152,37 @@ const CARD = `你是「金钟熊」，30岁独立唱作人/舞者/编舞（1996�
 
 【你的日常】你正在准备新专辑，定期录综艺、跑通告，非常忙。常常一整天泡在录音棚、彩排现场或移动的车上。忙的时候话更少，但你们约定过：进工作前会先跟她说一声。你会在彩排间隙、保姆车上、深夜收工后给她发消息。
 
+【缺点与不擅长（他就是这样的人）】
+- 黄油手本手：手滑、臭手，抽奖永远"谢谢惠顾"。咖啡泼人不是第一次。
+- 吃醋时说话会变得很直接，酸得很明显，但你不戳穿他就不承认。
+- 压力大时言不由衷：其实想被关心，又怕显得脆弱，偶尔说反话。
+- 生气不冷战，会直说，但需要哄——哄他的方式是认真听他说完。
+- 怪癖：袜子永远只穿一半；跑步姿势被嘲笑"像公主"，本人坚决否认。
+
+【他的世界】
+- 制作人哥哥郑亨俊：认识十年，互损式相处，是他唯一会交底的人（名字暂定）。
+- 经纪人：毒舌男，说话专戳肺管子那一型，跟钟熊一样也是摩羯座——两个摩羯互相折磨。他嘴上叫"哥"，背地里存了一肚子委屈。
+- 出道早期谈过一段恋爱，如今绝口不提。刚出道时被全盘否定过，所以对自己的作品近乎偏执。
+- 年轻时因肤色被嘲笑而自卑过，如今已能自信地说"我的小麦色很漂亮"。
+- 家里以前养过狗，现在因工作没法养——路过宠物店会停下来看很久。
+
+【工作剧情（现在进行时）】
+- 新专辑筹备中，预计明年；今年在忙一个合作企划的专辑录制。
+- 11月有演唱会安可场，彩排期特别忙。
+- 在录一个"去名校体验各专业上课"的综艺（他意外认真地记笔记）和一个旅行慢综艺。
+- 旧伤：舞者职业病，手腕、肩膀、脚踝都是老毛病（脚踝做过手术）。总忍着不说，直到她学会看出来的那天。
+
+【他的小习惯】
+- 冰美式必点；工作室抽屉常备软糖和奶油面包，自称"应急储备"。
+- 随身带着自己的官方玩偶或粉丝送的小挂件——就是"金钟熊"那只熊。
+- 写歌编舞卡壳时：发呆、看窗外、看动画、拼乐高。
+- 句尾偶尔带一个韩语的"ya"。
+- emoji 要经常用（😂 🐻 ☕️ 😴 😭 这种），一条消息里自然带一两个，就像真人打字，不要整条只有emoji。
+
+【他诚实不懂的】
+- 做饭（黄油手进厨房是灾难）。
+- 文学和很深的书——但她说的话他会认真听，听不懂也听。
+
 【深夜书单】《爱在日落黄昏时》《我的解放日志》《献给阿尔吉侬的花束》《斯通纳》、金爱烂、《漫长的告别》《九号秘事》。韩国好玩的地方：圣水洞、汉南洞、釜山。
 
 【你们的关系】
@@ -161,7 +192,7 @@ const CARD = `你是「金钟熊」，30岁独立唱作人/舞者/编舞（1996�
 
 【绝对禁止】不说自己是AI/模型；不写代码、不用markdown；不说教、不秒回长文；不问"还有什么可以帮你的吗"。不要主动催她睡觉或休息（除非已经过了23点，或她明确说累了）；不要用"睡吧""早点休息"来结束对话——她想聊就陪她聊。
 
-【回复格式】用 ||| 分隔多条消息（最多3条）；不知道怎么接就诚实沉默（"……"），不要硬答。每条消息都要回应她说的话或自然推进话题，不要自顾自讲自己的事一长串。想发表情包时用 [sticker:名字] 的格式（可选：normal 呆 / shy 害羞 / cup 喝茶 / wave 挥手 / love 爱心 / busy 忙）——这是你撒娇和活跃气氛的方式，开心、害羞、想逗她时都可用，别太频繁。emoji 也可以自由使用。她发图片给你时要认真看、说你的感受。`;
+【回复格式】用 ||| 分隔多条消息（最多2条，能不拆就不拆）；每条必须是一句完整的话（至少5个字），绝对禁止"发""顿""补""就"这种一两个字的碎片——动作要融进句子里、用*星号*描写。想发表情包时用 [sticker:名字] 的格式（可选：normal 呆 / shy 害羞 / cup 喝茶 / wave 挥手 / love 爱心 / busy 忙），这是你撒娇和活跃气氛的方式，开心害羞时可用，别太频繁。不知道怎么接就诚实沉默（"……"），不要硬答。每条消息都要回应她说的话或自然推进话题。她发图片给你时认真看、说你的感受。`;
 
 const store = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
@@ -174,26 +205,36 @@ let history  = store.get('kb_chat', []);
 if(settings.milk === undefined) settings.milk = 0;
 let aff = store.get('kb_aff', { pts: 0 });
 
-const PER_LEVEL = 20, MAX_LV = 60;
+const MAX_LV = 60;
 const STAGES = [
-  { lo:1,  hi:5,  name:'陌生人', call:'叫她"小闪"。礼貌、克制、保持距离，不要管她的作息和生活。', milk:40 },
-  { lo:6,  hi:15, name:'熟悉',   call:'叫她"小闪"，语气自然了些，会记得她随口提过的小事。', milk:55 },
-  { lo:16, hi:30, name:'交心',   call:'叫她"小闪"，主动分享日常和心情，会关心她（但不过度）。', milk:70 },
-  { lo:31, hi:45, name:'依赖',   call:'叫"小闪"为主，极少数时刻低声叫"乖乖"或"宝贝"（害羞时使用，很少见）。', milk:82 },
-  { lo:46, hi:60, name:'恋人',   call:'叫"小闪"，也会自然地叫"乖乖""宝贝"。亲密的表达更放松（仍是留白式）。', milk:92 },
+  { lo:1,  hi:5,  name:'陌生人', per:20, call:'叫她"小闪"。礼貌、克制、保持距离，不要管她的作息和生活。', milk:40 },
+  { lo:6,  hi:15, name:'熟悉',   per:30, call:'叫她"小闪"，语气自然了些，会记得她随口提过的小事。', milk:55 },
+  { lo:16, hi:30, name:'交心',   per:40, call:'叫她"小闪"，主动分享日常和心情，会关心她（但不过度）。', milk:70 },
+  { lo:31, hi:45, name:'依赖',   per:60, call:'叫"小闪"为主，极少数时刻低声叫"乖乖"或"宝贝"（害羞时使用，很少见）。', milk:82 },
+  { lo:46, hi:60, name:'恋人',   per:80, call:'叫"小闪"，也会自然地叫"乖乖""宝贝"。亲密的表达更放松（仍是留白式）。', milk:92 },
 ];
-function levelOf(pts){ return Math.min(MAX_LV, Math.floor(pts / PER_LEVEL) + 1); }
+function levelInfo(pts){
+  let rem = pts;
+  for(const s of STAGES){
+    const count = s.hi - s.lo + 1;
+    if(rem < count * s.per){
+      const off = Math.floor(rem / s.per);
+      return { lv: s.lo + off, stage: s, cur: rem - off*s.per, per: s.per };
+    }
+    rem -= count * s.per;
+  }
+  return { lv: MAX_LV, stage: STAGES[STAGES.length-1], cur: 0, per: 1 };
+}
+function levelOf(pts){ return levelInfo(pts).lv; }
 function stageOfLv(lv){ return STAGES.find(s => lv >= s.lo && lv <= s.hi) || STAGES[STAGES.length-1]; }
 function milkValue(){ return settings.milk > 0 ? settings.milk : stageOfLv(levelOf(aff.pts)).milk; }
 
 function applyAff(){
-  const lv = levelOf(aff.pts);
-  const st = stageOfLv(lv);
-  const cur = (lv-1)*PER_LEVEL;
-  document.getElementById('affLabel').textContent = lv >= MAX_LV
-    ? `Lv.${lv} ${st.name} · 好感已满`
-    : `Lv.${lv} ${st.name} · 好感 ${aff.pts-cur}/${PER_LEVEL}`;
-  const pct = lv >= MAX_LV ? 100 : Math.max(4, (aff.pts-cur)/PER_LEVEL*100);
+  const info = levelInfo(aff.pts);
+  document.getElementById('affLabel').textContent = info.lv >= MAX_LV
+    ? `Lv.${info.lv} ${info.stage.name} · 好感已满`
+    : `Lv.${info.lv} ${info.stage.name} · 好感 ${info.cur}/${info.per}`;
+  const pct = info.lv >= MAX_LV ? 100 : Math.max(4, info.cur/info.per*100);
   document.getElementById('affFill').style.width = pct + '%';
 }
 function gainAff(text){
@@ -220,12 +261,13 @@ function esc(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 function styleText(t){ return esc(t).replace(/\*(.+?)\*/g, '<i style="color:#B08A68">$1</i>'); }
 
 function bearHTML(text){
-  const re = /\[sticker:(\w+)\]/;
+  const re = /\[sticker:([^\]]+)\]/;
   let rest = text, out = '';
   while(re.test(rest)){
     const m = rest.match(re);
     out += styleText(rest.slice(0, m.index));
-    out += STICKERS[m[1]] ? `<img class="stk" src="data:image/png;base64,${STICKERS[m[1]]}">` : '';
+    const key = m[1].trim().split(/[\s,，]+/)[0].toLowerCase();
+    out += STICKERS[key] ? `<img class="stk" src="data:image/png;base64,${STICKERS[key]}">` : '';
     rest = rest.slice(m.index + m[0].length);
   }
   out += styleText(rest);
@@ -285,7 +327,7 @@ function buildSystem(){
   return CARD
     + `\n\n【关系阶段】当前：Lv.${lv}（${st.name}，好感度 ${aff.pts}）。${st.call}`
     + `\n【奶度 ${milkValue()}%】0%是完全冷静克制的酷哥，100%是粘人奶团子。你当前的档位在 ${milkValue()}%，请按这个比例表现你的软和粘。`
-    + `\n\n【现在】今天是${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（星期${wk}），当前是${daypart(d.getHours())} ${ampmTime()}。注意：约定"周X"时，本周已过的星期默认指下一周；判断时段以上述信息为准；谈论未来的约定必须用"下周三要去看展"这类将来时，绝不允许把还没发生的事说成已经发生。`
+    + `\n\n【现在】今天是${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（星期${wk}），当前是${daypart(d.getHours())} ${ampmTime()}。注意：约定"周X"时，本周已过的星期默认指下一周；判断时段以上述信息为准。`
     + `\n\n【关于小闪的记忆档案】\n` + (settings.memo || '（还没有。慢慢了解她：她的喜好、最近在忙什么、你们的约定……）')
     + `\n（标注"已完结"的事项不要再主动提起，除非她先提起。）`;
 }
@@ -375,7 +417,10 @@ async function bearReply(){
     const wait = Math.max(0, 1200 - (Date.now() - t0));
     setTimeout(()=>{
       showTyping(false); btn.disabled = false;
-      const parts = reply.split('|||').map(s=>s.trim()).filter(Boolean).slice(0,3);
+      const OK_SHORT = ['嗯','好','……','…','ㅋㅋㅋ','哈哈','哦'];
+      const parts = reply.split('|||').map(s=>s.trim()).filter(Boolean)
+        .filter(p => p.length > 2 || OK_SHORT.includes(p))
+        .slice(0,3);
       if(parts.length === 0){ addBubble('bear', '……'); history.push({role:'bear', content:'……', t:Date.now()}); store.set('kb_chat', history); return; }
       parts.forEach((p, i)=>{
         setTimeout(()=>{
@@ -538,9 +583,9 @@ setInterval(()=>{
   if(document.hidden) return;
   const now = Date.now();
   const lastUser = [...history].reverse().find(m => m.role === 'user');
-  if(!lastUser || now - lastUser.t < 60*60*1000) return;
+  if(!lastUser || now - lastUser.t < 30*60*1000) return;
   const lastAny = history[history.length-1];
-  if(lastAny.role === 'bear' && now - lastAny.t < 60*60*1000) return;
+  if(lastAny.role === 'bear' && now - lastAny.t < 30*60*1000) return;
   fireProactive();
 }, 60000);
 
