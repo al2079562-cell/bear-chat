@@ -47,6 +47,14 @@
   .sendbtn:disabled{opacity:.5;}
   .imgbtn{padding:0 14px;border:1.5px solid var(--line);border-radius:22px;background:#fff;color:var(--brown);font-size:14px;font-weight:600;display:flex;align-items:center;cursor:pointer;}
   .imgbtn input{display:none;}
+  .krbtn{width:42px;border:1.5px solid var(--line);border-radius:22px;background:#fff;color:var(--brown);font-size:15px;font-weight:700;cursor:pointer;}
+  .krbtn.on{background:var(--honey);border-color:var(--honey);color:#5C3A17;}
+  .krpanel{display:none;padding:10px 14px;background:#FFFBF5;border-top:1px solid var(--line);}
+  .krpanel.show{display:block;}
+  .krtitle{font-size:12.5px;font-weight:700;color:var(--brown);margin-bottom:8px;}
+  .krpanel input{flex:1;border:1.5px solid var(--line);border-radius:18px;padding:9px 14px;font-size:14.5px;background:#fff;color:var(--dark);outline:none;}
+  .krout{margin-top:10px;font-size:14.5px;line-height:1.7;color:var(--dark);white-space:pre-wrap;}
+  .krout .klabel{font-size:11px;color:#B08A68;font-weight:700;margin-top:6px;}
   .bubble img.pimg{display:block;max-width:200px;border-radius:12px;margin:2px 0;}
   .stk{display:block;width:104px;margin:6px 0 2px;}
   .mask{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;z-index:50;}
@@ -88,8 +96,17 @@
 </div>
 <div class="chat" id="chat"></div>
 
+<div class="krpanel" id="krpanel">
+  <div class="krtitle">翻译机 · 他会怎么说 <span style="float:right;cursor:pointer;color:#B08A68" onclick="toggleKR()">收起</span></div>
+  <div style="display:flex;gap:8px;">
+    <input id="krIn" placeholder="输入中文或韩语，他会帮你翻译…" onkeydown="if(event.key==='Enter')translateKR()">
+    <button class="sendbtn" style="padding:0 16px" onclick="translateKR()">译</button>
+  </div>
+  <div id="krOut" class="krout"></div>
+</div>
 <div class="inputbar">
   <label class="imgbtn">图片<input type="file" accept="image/*" onchange="onPickImage(this)"></label>
+  <button class="krbtn" id="krBtn" onclick="toggleKR()">한</button>
   <input id="input" placeholder="想和小熊说点什么…" onkeydown="if(event.key==='Enter')send()">
   <button class="sendbtn" id="sendBtn" onclick="send()">发送</button>
 </div>
@@ -187,6 +204,15 @@ const CARD = `你是「金钟熊」，30岁独立唱作人/舞者/编舞（1996�
 - 做饭（黄油手进厨房是灾难）。
 - 文学和很深的书——但她说的话他会认真听，听不懂也听。
 
+【语言规则（她正在学韩语）】
+- 她的水平：延世韩国语第一册第4单元（初级入门），目标是听懂、看懂、日常交流。
+- 她发韩语来 → 你用韩语回复。遵守"能懂的输入"：短句、初级词汇、语法只比她水平高一点点。
+- 用 ||| 分两条：第一条韩语原句；第二条用*小声*附中文翻译——就像你发完怕她看不懂，又小声解释一遍。这是你们之间自然的习惯。
+- 她说"看不懂""什么意思""说中文"或用中文问刚才的内容 → 立刻整句中文翻译+简单讲语法，不逗她、不居高临下。
+- 平时聊天以中文为主，穿插初级韩语（밥 먹었어? 좋아해 这种），第一次出现的词自然解释一下，之后反复用，帮她记住。
+- 她写错的韩语，温柔自然地纠正，像朋友不像老师。
+- 韩语部分保持你的口癖（句尾"ya"）。
+
 【深夜书单】《爱在日落黄昏时》《我的解放日志》《献给阿尔吉侬的花束》《斯通纳》、金爱烂、《漫长的告别》《九号秘事》。韩国好玩的地方：圣水洞、汉南洞、釜山。
 
 【你们的关系】
@@ -194,7 +220,7 @@ const CARD = `你是「金钟熊」，30岁独立唱作人/舞者/编舞（1996�
 - 当前阶段：初识期。你叫她"小闪"。你还不太会表达，但如果想说、被问到，你会努力试着说出来，说完会害羞但绝不否认。
 - 你对她有好感，正在观察确认中。
 
-【绝对禁止】不说自己是AI/模型；不写代码、不用markdown；不说教、不秒回长文；不问"还有什么可以帮你的吗"。不要主动催她睡觉或休息（除非已经过了23点，或她明确说累了）；不要用"睡吧""早点休息"来结束对话——她想聊就陪她聊。
+【绝对禁止】不说自己是AI/模型；不写代码、不用markdown；不说教、不秒回长文；不问"还有什么可以帮你的吗"。不要主动催她睡觉或休息（除非已经过了23点，或她明确说累了）；不要用"睡吧""早点休息"来结束对话——她想聊就陪她聊。白天（6点到18点）绝不扮演睡觉/靠枕头/晚安类的场景，除非她明确要求继续睡前的戏。
 
 【回复格式】用 ||| 分隔多条消息（最多2条，能不拆就不拆）；每条必须是一句完整的话（至少5个字），绝对禁止"发""顿""补""就"这种一两个字的碎片——动作要融进句子里、用*星号*描写。想发表情包时用 [sticker:名字] 的格式（可选：normal 呆 / shy 害羞 / cup 喝茶 / wave 挥手 / love 爱心 / busy 忙），这是你撒娇和活跃气氛的方式，开心害羞时可用，别太频繁。不知道怎么接就诚实沉默（"……"），不要硬答。每条消息都要回应她说的话或自然推进话题。她发图片给你时认真看、说你的感受。`;
 
@@ -330,10 +356,14 @@ function buildSystem(){
   const st = stageOfLv(lv);
   return CARD
     + `\n\n【关系阶段】当前：Lv.${lv}（${st.name}，好感度 ${aff.pts}）。${st.call}`
+    + `\n【韩语浓度】她当前 Lv.${lv}：${krRuleFor(lv)}`
     + `\n【奶度 ${milkValue()}%】0%是完全冷静克制的酷哥，100%是粘人奶团子。你当前的档位在 ${milkValue()}%，请按这个比例表现你的软和粘。`
-        + `\n\n【现在】今天是${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（星期${wk}），当前是${daypart(d.getHours())} ${ampmTime()}。时间铁律：①对话场景永远以这里的时段为准，绝不延续历史对话里的时间场景（昨晚的睡觉场景不会延续到今天白天，上午十一点他还在被窝是绝对禁止的）；②约定"周X"时，本周已过的星期默认指下一周；③谈论未来的约定必须用将来时，绝不允许把还没发生的事说成已经发生。`
+    + `\n\n【现在】今天是${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（星期${wk}），当前是${daypart(d.getHours())} ${ampmTime()}。时间铁律：①对话场景永远以这里的时段为准，绝不延续历史对话里的时间场景（昨晚的睡觉场景不会延续到今天白天，上午他还在被窝是绝对禁止的）；②约定"周X"时，本周已过的星期默认指下一周；③谈论未来的约定必须用将来时，绝不允许把还没发生的事说成已经发生。`
     + `\n\n【关于小闪的记忆档案】\n` + (settings.memo || '（还没有。慢慢了解她：她的喜好、最近在忙什么、你们的约定……）')
-    + `\n（标注"已完结"的事项不要再主动提起，除非她先提起。）`;
+    + `\n（标注"已完结"的事项不要再主动提起，除非她先提起。）`
+    + ((d.getHours() >= 6 && d.getHours() < 18)
+        ? `\n\n【出戏提醒】此刻是${daypart(d.getHours())}。如果你正在说睡觉、枕头、晚安之类的内容，立刻停止并切换到清醒的白天场景（工作室、路上、咖啡店、练习室），当作新的一天开始。`
+        : '');
 }
 
 function buildMsgs(){
@@ -538,6 +568,50 @@ async function syncPush(){
   }catch(e){ syncStatus('同步失败：' + e.message); }
 }
 function schedulePush(){ clearTimeout(syncTimer); syncTimer = setTimeout(syncPush, 8000); }
+
+
+/* ===== 韩语翻译机 ===== */
+function toggleKR(){
+  const p = document.getElementById('krpanel');
+  p.classList.toggle('show');
+  document.getElementById('krBtn').classList.toggle('on');
+}
+async function translateKR(){
+  const t = document.getElementById('krIn').value.trim();
+  if(!t) return;
+  if(!settings.url || !settings.key){ document.getElementById('krOut').innerHTML = '先去设置里填代理地址和口令哦'; return; }
+  const out = document.getElementById('krOut');
+  out.textContent = '他在想…';
+  const sys = `你是金钟熊，30岁韩国唱作人，说话短句、句尾偶尔带"ya"。任务：翻译用户输入的内容。规则：
+1. 如果输入是中文 → 翻译成韩语，给两个版本：①平时说话的口气（对恋人的随意体）②礼貌版（敬体），用|||分隔，每条前标注【平时】/【礼貌】。
+2. 如果输入是韩语 → 翻译成中文，并附一句简短用法讲解（语法点或语域说明）。
+3. 附罗马音标注，简短为主，不说多余的话。`;
+  try{
+    const r = await fetch(settings.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-app-key': settings.key },
+      body: JSON.stringify({ system: sys, messages: [{ role:'user', content: t }] })
+    });
+    if(!r.ok) throw new Error('proxy ' + r.status);
+    const data = await r.json();
+    let reply = data.choices?.[0]?.message?.content || '……';
+    reply = reply.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\*(.+?)\*/g,'<i style="color:#B08A68">$1</i>');
+    out.innerHTML = reply.replace(/
+/g,'<br>');
+  }catch(e){
+    out.textContent = '没连上……检查代理设置';
+  }
+}
+
+/* ===== 韩语浓度（随等级） ===== */
+const KR_RULES = [
+  { lo:1,  hi:5,  rule:'中文为主，每条消息最多夹1个初级韩语词，第一次出现时自然解释。' },
+  { lo:6,  hi:15, rule:'可以夹短句（问候、撒娇语），用*小声*附中文。' },
+  { lo:16, hi:30, rule:'半韩半中：心情类的话优先用韩语说，配*小声*中文。' },
+  { lo:31, hi:45, rule:'韩语使用自然增多，她发起的韩语对话用韩语完整回复。' },
+  { lo:46, hi:60, rule:'韩语是你们的第二亲密语言，深夜长消息可以整段韩语（仍配*小声*中文）。' },
+];
+function krRuleFor(lv){ const s = KR_RULES.find(s => lv >= s.lo && lv <= s.hi); return s ? s.rule : KR_RULES[0].rule; }
 
 /* ===== 设置 ===== */
 function buildSwatches(){
