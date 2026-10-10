@@ -596,8 +596,7 @@ async function translateKR(){
     const data = await r.json();
     let reply = data.choices?.[0]?.message?.content || '……';
     reply = reply.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\*(.+?)\*/g,'<i style="color:#B08A68">$1</i>');
-    out.innerHTML = reply.replace(/
-/g,'<br>');
+    out.innerHTML = reply.replace(/\n/g,'<br>');
   }catch(e){
     out.textContent = '没连上……检查代理设置';
   }
