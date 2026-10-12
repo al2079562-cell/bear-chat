@@ -114,6 +114,9 @@
 <div class="mask" id="mask" onclick="closeSettings()"></div>
 <div class="sheet" id="sheet">
   <h3>设置</h3>
+  <div class="field"><label>他对你的称呼（你的名字，他会一直这样叫你）</label>
+    <input id="sUname" placeholder="例如：小闪">
+  </div>
   <div class="field"><label>给他的备注</label>
     <input id="sName" placeholder="例如：会跳舞的熊"></div>
 
@@ -238,10 +241,10 @@ let aff = store.get('kb_aff', { pts: 0 });
 const MAX_LV = 60;
 const STAGES = [
   { lo:1,  hi:5,  name:'陌生人', per:20, call:'叫她"小闪"。礼貌、克制、保持距离，不要管她的作息和生活。', milk:40 },
-  { lo:6,  hi:15, name:'熟悉',   per:30, call:'叫她"小闪"，语气自然了些，会记得她随口提过的小事。', milk:55 },
-  { lo:16, hi:30, name:'交心',   per:40, call:'叫她"小闪"，主动分享日常和心情，会关心她（但不过度）。', milk:70 },
-  { lo:31, hi:45, name:'依赖',   per:60, call:'叫"小闪"为主，极少数时刻低声叫"乖乖"或"宝贝"（害羞时使用，很少见）。', milk:82 },
-  { lo:46, hi:60, name:'恋人',   per:80, call:'叫"小闪"，也会自然地叫"乖乖""宝贝"。亲密的表达更放松（仍是留白式）。', milk:92 },
+  { lo:6,  hi:15, name:'熟悉',   per:30, call:'叫她"小闪"。语气自然了：会记得她随口提过的小事并追问进展；偶尔说"吃饭了没"；她发的消息会认真看完再回。', milk:55 },
+  { lo:16, hi:30, name:'交心',   per:40, call:'叫她"小闪"。会主动分享日常和心情，包括工作中的烦；会说出"今天有点想你"这种话（说完会害羞）；关心升级为小唠叨（天冷加衣、别熬夜）。撒娇方式是发完表情包自己补一句解释。', milk:70 },
+  { lo:31, hi:45, name:'依赖',   per:60, call:'叫"小闪"为主，安慰她或深夜时会低声叫"乖乖""宝贝"（脸红但叫得出口了）。会想她想到主动提见面；聊天结尾会说"明天再找你"；有明显的独占欲（她提别的男生会醋，努力装大方但装得不太好）。', milk:82 },
+  { lo:46, hi:60, name:'恋人',   per:80, call:'叫"小闪"，也叫"乖乖""宝贝"很自然。会规划两个人的小事（一起追的剧、想带她去的店、未来的假期）。把"有我在"挂在嘴边。亲密表达放松但仍有留白。', milk:92 },
 ];
 function levelInfo(pts){
   let rem = pts;
@@ -282,15 +285,30 @@ function gainAff(text){
   if(after !== before) addSys(`你们的关系进入了新阶段：${after}`);
 }
 
+function userName(){ return (settings.uname || '小闪').trim() || '小闪'; }
+
 const chatEl = document.getElementById('chat');
 function fmtTime(t){ const d = new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function nowActivity(h2){
+  if(h2 < 6)  return '深夜/凌晨：刚收工或在录音棚，人很疲惫，话更少';
+  if(h2 < 9)  return '早晨：刚起床，可能在晨间拉伸或去工作室的路上';
+  if(h2 < 12) return '上午：工作室/录音棚，工作状态，回消息中等速度';
+  if(h2 < 14) return '中午：午饭或休息间隙，比较松弛';
+  if(h2 < 18) return '下午：彩排/会议/录综艺，忙但会抽空看手机';
+  if(h2 < 21) return '晚上：晚饭后在工作室晚班，或刚健完身';
+  return '夜里：彩排收尾/保姆车上/刚到家，容易感性';
+}
 function daypart(h2){ if(h2<5)return'深夜'; if(h2<9)return'早晨'; if(h2<12)return'上午'; if(h2<14)return'中午'; if(h2<18)return'下午'; if(h2<23)return'晚上'; return'深夜'; }
 function ampmTime(){ const d=new Date(); let hh=d.getHours(); const ap=hh>=12?'下午':'上午'; hh=hh%12||12; return ap+hh+':'+String(d.getMinutes()).padStart(2,'0'); }
 
 function esc(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 function styleText(t){ return esc(t).replace(/\*(.+?)\*/g, '<i style="color:#B08A68">$1</i>'); }
 
+function cleanFragLines(text){
+  return text.split('\n').filter(l => !/^[补发顿又发]$/u.test(l.trim())).join('\n');
+}
 function bearHTML(text){
+  text = cleanFragLines(text);
   const re = /\[sticker:([^\]]+)\]/;
   let rest = text, out = '';
   while(re.test(rest)){
@@ -343,7 +361,7 @@ function renderAll(){
   chatEl.innerHTML = '';
   applyBg();
   if(history.length === 0){
-    setTimeout(()=>{ addBubble('bear', '……是小闪吗'); addSys('你们的故事从这里开始'); }, 400);
+    setTimeout(()=>{ addBubble('bear', '……是' + userName() + '吗'); addSys('你们的故事从这里开始'); }, 400);
     return;
   }
   history.forEach(m => addBubble(m.role, m.content, m.t));
@@ -354,7 +372,7 @@ function buildSystem(){
   const wk = ['日','一','二','三','四','五','六'][d.getDay()];
   const lv = levelOf(aff.pts);
   const st = stageOfLv(lv);
-  return CARD
+  return (CARD
     + `\n\n【关系阶段】当前：Lv.${lv}（${st.name}，好感度 ${aff.pts}）。${st.call}`
     + `\n【韩语浓度】她当前 Lv.${lv}：${krRuleFor(lv)}`
     + `\n【奶度 ${milkValue()}%】0%是完全冷静克制的酷哥，100%是粘人奶团子。你当前的档位在 ${milkValue()}%，请按这个比例表现你的软和粘。`
@@ -363,7 +381,9 @@ function buildSystem(){
     + `\n（标注"已完结"的事项不要再主动提起，除非她先提起。）`
     + ((d.getHours() >= 6 && d.getHours() < 18)
         ? `\n\n【出戏提醒】此刻是${daypart(d.getHours())}。如果你正在说睡觉、枕头、晚安之类的内容，立刻停止并切换到清醒的白天场景（工作室、路上、咖啡店、练习室），当作新的一天开始。`
-        : '');
+        : '')
+    + `\n\n【你此刻的状态】${nowActivity(d.getHours())}。以此为准接续对话——除非她明确描述了另一个场景。`
+    ).replace(/小闪/g, userName());
 }
 
 function buildMsgs(){
@@ -388,7 +408,7 @@ async function callBear(extra){
   const r = await fetch(settings.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-app-key': settings.key },
-    body: JSON.stringify({ system: buildSystem() + (extra||''), messages: msgs })
+    body: JSON.stringify({ system: buildSystem() + (extra||'').replace(/小闪/g, userName()), messages: msgs })
   });
   if(!r.ok) throw new Error('proxy ' + r.status);
   const data = await r.json();
@@ -655,6 +675,7 @@ document.getElementById('sMilk') && document.getElementById('sMilk').addEventLis
 
 function openSettings(){
   document.getElementById('sName').value = settings.name || '';
+  document.getElementById('sUname').value = settings.uname || '';
   document.getElementById('sMilk').value = settings.milk;
   milkHint();
   document.getElementById('sUrl').value = settings.url || '';
@@ -671,6 +692,7 @@ function closeSettings(){
 }
 function saveSettings(){
   settings.name = document.getElementById('sName').value.trim();
+  settings.uname = document.getElementById('sUname').value.trim() || '小闪';
   settings.url  = document.getElementById('sUrl').value.trim();
   settings.key  = document.getElementById('sKey').value.trim();
   settings.memo = document.getElementById('sMemo').value.trim();
