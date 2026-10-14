@@ -136,6 +136,7 @@
   <div class="field"><label>云同步令牌（GitHub Token，只勾 gist 那个）</label>
     <input id="sToken" placeholder="ghp_...">
     <div style="font-size:12px;color:#C4A586;margin-top:4px;" id="syncHint">未开启同步</div>
+    <button class="btn ghost" style="margin-top:8px;padding:8px;font-size:13px" onclick="restoreFromCloud()">从云端历史恢复（记录丢失时用）</button>
   </div>
   <div class="field"><label>代理地址（腾讯云函数网址）</label>
     <input id="sUrl" placeholder="https://xxx.workers.dev"></div>
@@ -579,6 +580,17 @@ async function syncPush(){
   if(!settings.token) return;
   try{
     const data = collectData();
+    // 防护：本地记录为空、云端却有记录时 → 改为拉取，绝不用空数据覆盖云端
+    if((!data.history || data.history.length === 0) && settings.gistId){
+      try{
+        const g0 = await gistRequest('GET', '/gists/' + settings.gistId);
+        const raw0 = g0.files['bear-chat.json'] && g0.files['bear-chat.json'].raw_url;
+        if(raw0){
+          const remote0 = await (await fetch(raw0)).json();
+          if((remote0.history || []).length > 0){ syncPull(); return; }
+        }
+      }catch(e0){}
+    }
     if(!settings.gistId){
       const g = await gistRequest('POST', '/gists', { description:'bear-chat backup', public:false, files:{ 'bear-chat.json': { content: JSON.stringify(data) } } });
       settings.gistId = g.id; store.set('kb_settings', settings);
@@ -589,6 +601,36 @@ async function syncPush(){
     syncStatus('已同步 ' + fmtTime(data.updatedAt));
   }catch(e){ syncStatus('同步失败：' + e.message); }
 }
+
+async function restoreFromCloud(){
+  if(!settings.token || !settings.gistId){ syncStatus('先填令牌并保存一次'); return; }
+  if(!confirm('将从云端版本历史中找回记录最多的那个版本，覆盖当前本地。继续？')) return;
+  syncStatus('正在翻云端历史…');
+  try{
+    const commits = await gistRequest('GET', '/gists/' + settings.gistId + '/commits');
+    if(!Array.isArray(commits) || !commits.length){ syncStatus('云端没有历史版本'); return; }
+    let best = null;
+    for(const c of commits){
+      try{
+        const g = await gistRequest('GET', '/gists/' + settings.gistId + '/' + c.version);
+        const raw = g.files['bear-chat.json'] && g.files['bear-chat.json'].raw_url;
+        if(!raw) continue;
+        const d = await (await fetch(raw)).json();
+        const len = (d.history || []).length;
+        const pts = (d.aff && d.aff.pts) || 0;
+        if(!best || len > best.len || (len === best.len && pts > best.pts)) best = { d, len, pts, at: c.committed_at };
+      }catch(e1){}
+    }
+    if(best && best.len > 0){
+      applyRemote(best.d);
+      store.set('kb_sync_at', best.d.updatedAt || Date.now());
+      syncStatus('已恢复 ' + best.at + ' 的版本（' + best.len + '条记录，好感' + best.pts + '）');
+      addSys('已从云端找回你们的回忆（' + best.len + '条）');
+      setTimeout(syncPush, 3000);
+    } else syncStatus('没有找到有记录的版本');
+  }catch(e){ syncStatus('恢复失败：' + e.message); }
+}
+
 function schedulePush(){ clearTimeout(syncTimer); syncTimer = setTimeout(syncPush, 8000); }
 
 
