@@ -391,7 +391,7 @@ function buildSystem(){
 
 function buildMsgs(){
   const out = [];
-  history.slice(-24).forEach(m => {
+  history.slice(-90).forEach(m => {
     const role = m.role === 'user' ? 'user' : 'assistant';
     let content = m.content;
     if(m.img){
