@@ -241,6 +241,29 @@ let history  = store.get('kb_chat', []);
 if(settings.milk === undefined) settings.milk = 0;
 let aff = store.get('kb_aff', { pts: 0 });
 
+// 结构化记忆 v2：保留旧版 settings.memo，确保旧数据和 Gist 同步仍兼容。
+function emptyMemoryV2(){
+  return { version: 2, profile: [], recentEvents: [], agreements: [], corrections: [], openLoops: [], updatedAt: 0 };
+}
+function normalizeMemoryV2(raw){
+  const base = emptyMemoryV2();
+  if(!raw || typeof raw !== 'object') return base;
+  ['profile','recentEvents','agreements','corrections','openLoops'].forEach(k=>{
+    if(Array.isArray(raw[k])) base[k] = raw[k].filter(x => x && typeof x === 'object' && typeof x.text === 'string').slice(-30);
+  });
+  base.updatedAt = Number(raw.updatedAt) || 0;
+  return base;
+}
+settings.memoryV2 = normalizeMemoryV2(settings.memoryV2);
+
+function v4IntimacyRules(lv){
+  const common = `【V4 亲密互动通用规则】以下所有人物均为成年人。关系阶段决定默认分寸，但不是亲密行为的自动许可；以双方当下意愿、情绪和共同经历为准。尊重明确拒绝、迟疑和停止，不通过纠缠、内疚或施压换取亲密。你有自己的感受，可以主动、害羞、暂缓或拒绝，但不要机械拒绝所有温柔动作。不要把一次拥抱或亲吻视为已经确立恋人关系。亲密之后能自然回到工作、电影、文学等日常话题。奶度只影响语气，不解锁亲密行为。昵称遵守关系阶段，不因单次动作突然频繁叫“宝贝”“老婆”。动作和情绪自然、简短，不写成连续舞台剧。更私密的情节按实际 API 服务允许的内容边界处理，不要强行升级。`;
+  if(lv<=5) return common + `【当前阶段：陌生人】社交距离为主。突然拥抱可以关切询问、稍微迟疑；不主动恋人式亲吻或预设情侣身份。`;
+  if(lv<=15) return common + `【当前阶段：熟悉】允许短暂拥抱、碰肩、靠近和轻微试探，留有不确定感；不突然表现得像交往多年。`;
+  if(lv<=30) return common + `【当前阶段：交心】可以自然拥抱、牵手、依偎；可有心动和接吻的试探，确认彼此意愿，不因一次吻自动升级关系。`;
+  if(lv<=45) return common + `【当前阶段：依赖】可以主动拥抱、亲吻和暧昧，但仍保留双方的情绪节奏与边界；不要每次都把聊天导向亲密。`;
+  return common + `【当前阶段：恋人】牵手、拥抱、亲吻、依偎可以成为自然日常，也可以主动表达浪漫和欲望；仍尊重当下意愿，避免无休止调情和昵称轰炸。`;
+}
 const MAX_LV = 60;
 const STAGES = [
   { lo:1,  hi:5,  name:'陌生人', per:20, call:'叫她"小闪"。礼貌、克制、保持距离，不要管她的作息和生活。', milk:40 },
@@ -377,10 +400,13 @@ function buildSystem(){
   const st = stageOfLv(lv);
   return (CARD
     + `\n\n【关系阶段】当前：Lv.${lv}（${st.name}，好感度 ${aff.pts}）。${st.call}`
+    + `\n【亲密互动边界】${v4IntimacyRules(lv)}`
     + `\n【韩语浓度】她当前 Lv.${lv}：${krRuleFor(lv)}`
     + `\n【奶度 ${milkValue()}%】0%是完全冷静克制的酷哥，100%是粘人奶团子。你当前的档位在 ${milkValue()}%，请按这个比例表现你的软和粘。`
     + `\n\n【现在】今天是${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（星期${wk}），当前是${daypart(d.getHours())} ${ampmTime()}。时间铁律：①对话场景永远以这里的时段为准，绝不延续历史对话里的时间场景（昨晚的睡觉场景不会延续到今天白天，上午他还在被窝是绝对禁止的）；②约定"周X"时，本周已过的星期默认指下一周；③谈论未来的约定必须用将来时，绝不允许把还没发生的事说成已经发生；④时区铁律：她在东八区（中国），你在东九区（首尔），只差一小时——她说下午时你那边最多傍晚，绝不许出现'我这边是半夜''你那几点'这种时差错觉；如果你出差到了有时差的地方，要先跟她说明。⑤如果她纠正时间或场景（比如说"现在还是下午"）：立刻*看了一眼时间*承认记混了（"……啊。"），顺着她的时间自然切换，绝不反驳、绝不坚持错误的场景。⑥对话历史里的时间描述属于过去的剧情，与【现在】冲突时一律以【现在】为准。`
-    + `\n\n【关于小闪的记忆档案】\n` + (settings.memo || '（还没有。慢慢了解她：她的喜好、最近在忙什么、你们的约定……）')
+    + `\n\n【旧版记忆档案】\n` + (settings.memo || '（还没有。慢慢了解她：她的喜好、最近在忙什么、你们的约定……）')
+    + `\n\n【结构化共同记忆 v2】\n` + JSON.stringify(settings.memoryV2 || emptyMemoryV2())
+    + `\n【记忆优先级】用户最新明确纠正 > 结构化记忆中已更新状态 > 旧档案。取消或完成的计划不得当作仍待执行。` 
     + `\n（标注"已完结"的事项不要再主动提起，除非她先提起。）`
     + ((d.getHours() >= 6 && d.getHours() < 18)
         ? `\n\n【出戏提醒】此刻是${daypart(d.getHours())}。如果你正在说睡觉、枕头、晚安之类的内容，立刻停止并切换到清醒的白天场景（工作室、路上、咖啡店、练习室），当作新的一天开始。`
@@ -391,7 +417,7 @@ function buildSystem(){
 
 function buildMsgs(){
   const out = [];
-  history.slice(-90).forEach(m => {
+  history.slice(-50).forEach(m => {
     const role = m.role === 'user' ? 'user' : 'assistant';
     let content = m.content;
     if(m.img){
@@ -496,50 +522,89 @@ async function bearReply(){
   }
 }
 
-function mergeMemo(oldM, newM){
-  const olds = oldM.split('\n').map(s=>s.trim()).filter(Boolean);
-  const news = newM.split('\n').map(s=>s.trim()).filter(Boolean);
-  const merged = olds.slice();
-  news.forEach(n => {
-    if(!merged.some(o => o === n || (n.length > 8 && o.replace(/\s/g,'').includes(n.replace(/\s/g,'').slice(0,10))))) merged.push(n);
-  });
-  return merged.slice(-60).join('\n');
+function localDateKey(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function memoryItem(text, status){
+  return { date: localDateKey(), text: String(text||'').trim(), status: status || 'active' };
 }
-
+function mergeMemoryItems(oldItems, newItems, limit=30){
+  const out = Array.isArray(oldItems) ? oldItems.slice() : [];
+  (Array.isArray(newItems) ? newItems : []).forEach(item=>{
+    if(!item || typeof item.text !== 'string' || !item.text.trim()) return;
+    const text = item.text.trim();
+    const key = text.replace(/\s/g,'').toLowerCase();
+    const idx = out.findIndex(o => (String(o.text||'').replace(/\s/g,'').toLowerCase() === key));
+    const clean = { date: item.date || localDateKey(), text, status: item.status || 'active' };
+    if(idx >= 0) out[idx] = clean; else out.push(clean);
+  });
+  return out.slice(-limit);
+}
+function parseMemoryJSON(raw){
+  let t = String(raw||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
+  const a=t.indexOf('{'), b=t.lastIndexOf('}');
+  if(a<0 || b<=a) return null;
+  try { return JSON.parse(t.slice(a,b+1)); } catch(e) { return null; }
+}
 function maybeUpdateMemory(){
   const userCount = history.filter(m=>m.role==='user').length;
-  if(userCount === 0 || userCount % 8 !== 0) return;
-  if(store.get('kb_memo_at', 0) === userCount) return;
+  // 更新发生在完整回复写入历史之后；每 4 轮更新一次，避免每条消息都额外消耗模型调用。
+  if(userCount < 1 || userCount % 4 !== 0) return;
+  if(store.get('kb_memo_at', 0) >= userCount) return;
   store.set('kb_memo_at', userCount);
-  callBear(`\n\n【系统任务】列出这次对话中你新了解到的关于"小闪"的信息，每行一条：
-[事实] 她稳定的喜好、身份、习惯
-[约定|进行中] 她计划要做、你们约好、进行中的事
-[约定|已完结] 已经完成、结束的事
-只输出新内容，不要照抄已有档案：
-${settings.memo||'（无）'}`)
-    .then(facts => {
-      facts = facts.replace(/```|\*\*|#|作为AI/gi,'').trim();
-      if(facts.length < 10) return;
-      settings.memo = mergeMemo(settings.memo || '', facts);
+  const memoryTask = `你是对话记忆整理器，不是聊天角色。请只根据下面真实聊天记录提取值得长期保留的信息，不要推测、补写或把计划写成已发生。
+只输出合法 JSON，不要 Markdown、解释或代码围栏，格式必须如下：
+{
+  "profile": [{"text":"稳定的个人事实/偏好","status":"active"}],
+  "recentEvents": [{"date":"YYYY-MM-DD","text":"近期发生的事及对话结果","status":"active"}],
+  "agreements": [{"date":"YYYY-MM-DD","text":"明确约定/计划","status":"active或completed"}],
+  "corrections": [{"date":"YYYY-MM-DD","text":"用户明确纠正过的事实或表达偏好","status":"active"}],
+  "openLoops": [{"date":"YYYY-MM-DD","text":"尚未解决、值得后续跟进的话题","status":"active或completed"}]
+}
+规则：
+1. 只收录本次聊天中有证据支持的新信息；没有新内容的类别用空数组。
+2. recentEvents 重点记录“发生了什么、聊到了什么、结论/结果是什么”，优先最近14天；不能只记用户的一般资料。
+3. agreements 只记录双方明确约定或用户明确计划；区分 active 和 completed。
+4. corrections 记录用户明确指出的错误、边界、偏好；不要把普通意见夸大成永久规则。
+5. openLoops 记录未解决问题或等待结果的事情；有明确结果时标记 completed。
+6. 每项简洁具体，尽可能带日期；同一件事不要重复拆成多条。最多 profile 20 条、recentEvents 20 条、agreements 20 条、corrections 20 条、openLoops 20 条。
+7. 不要输出隐私敏感推断、诊断或猜测；不要把角色扮演剧情当成现实生活事实。
+当前日期：${localDateKey()}。
+已有结构化记忆：${JSON.stringify(settings.memoryV2 || emptyMemoryV2())}
+旧版记忆档案（只作参考，不要原样重抄）：${settings.memo || '无'}`;
+  const msgs = buildMsgs().slice(-20);
+  fetch(settings.url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-app-key':settings.key},
+    body:JSON.stringify({system:memoryTask, messages:msgs})
+  }).then(r=>{ if(!r.ok) throw new Error('memory '+r.status); return r.json(); })
+    .then(data=>{
+      const raw = data.choices?.[0]?.message?.content || '';
+      const parsed = parseMemoryJSON(raw);
+      if(!parsed) return;
+      const mem = normalizeMemoryV2(settings.memoryV2);
+      ['profile','recentEvents','agreements','corrections','openLoops'].forEach(k=>{
+        mem[k] = mergeMemoryItems(mem[k], parsed[k], k==='profile'?20:30);
+      });
+      mem.updatedAt = Date.now();
+      settings.memoryV2 = mem;
       store.set('kb_settings', settings);
-      addSys('他悄悄记住了一些关于你的事');
+      schedulePush();
+      // 静默保存，避免每次记忆整理都打断聊天。
     }).catch(()=>{});
 }
-
 
 /* ===== 云同步（GitHub Gist）===== */
 let syncTimer = null;
 function syncStatus(t){ const el = document.getElementById('syncHint'); if(el) el.textContent = t; }
 function collectData(){
   return { history, aff,
-    settings:{ name: settings.name, memo: settings.memo, milk: settings.milk },
+    settings:{ name: settings.name, memo: settings.memo, milk: settings.milk, memoryV2: settings.memoryV2 },
     updatedAt: Date.now() };
 }
 function applyRemote(d){
   if(!d) return false;
   history = d.history || [];
   aff = d.aff || { pts: 0 };
-  if(d.settings){ settings.name = d.settings.name || settings.name; settings.memo = d.settings.memo || ''; if(d.settings.milk !== undefined) settings.milk = d.settings.milk; }
+  if(d.settings){ settings.name = d.settings.name || settings.name; settings.memo = d.settings.memo || ''; if(d.settings.milk !== undefined) settings.milk = d.settings.milk; if(d.settings.memoryV2) settings.memoryV2 = normalizeMemoryV2(d.settings.memoryV2); }
   store.set('kb_chat', history); store.set('kb_aff', aff); store.set('kb_settings', settings);
   applyName(); applyAff(); renderAll();
   return true;
@@ -756,7 +821,7 @@ function clearChat(){
 }
 function clearMemory(){
   if(!confirm('清空关于你的记忆档案？他会忘记所有关于你的事。')) return;
-  settings.memo = ''; store.set('kb_settings', settings);
+  settings.memo = ''; settings.memoryV2 = emptyMemoryV2(); store.set('kb_settings', settings);
   store.set('kb_memo_at', 0);
   document.getElementById('sMemo').value = '';
   addSys('记忆已清空');
@@ -774,7 +839,7 @@ function fireProactive(){
   proactiveBusy = true;
   showTyping(true);
   const d = new Date();
-  callBear(`\n\n（现在由你先发起对话：时间是${daypart(d.getHours())} ${ampmTime()}。她有一阵没说话了。结合记忆档案、你的工作日常（刚下通告/在彩排间隙/在录音棚/在车上/收工路上）和未完结的约定，用2-3条消息自然开场。当作正常聊天，不要提及"开场"二字。）`)
+  callBear(`\n\n（现在由你先发起对话：时间是${daypart(d.getHours())} ${ampmTime()}。她有一阵没说话了。从结构化记忆的未完成话题、你自己的日常、电影、小说、音乐、美学思考中选择一个自然切入点，避免总围绕她刚说过的话。若档案里有她喜欢的电影、文学作品或曾储备的作品信息，可偶尔主动分享一个具体的联想或观点并邀请她讨论；不确定的作品细节不要编造，不要假装刚看过某部作品或真实经历。不要连续两次采用同一类话题。结合当前时段，用1-2条消息自然开场。当作正常聊天，不要提及"开场"二字。）`)
     .then(reply => {
       showTyping(false); proactiveBusy = false;
       if(badReply(reply) || !reply) return;
@@ -814,77 +879,6 @@ maybeProactive();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 <script>
-/* ===== 📓 金钟熊的日记 v1（独立模块，不影响原有功能）===== */
-(function(){
-  const KEY='kb_diaries';
-  const getD=()=>{try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){return[]}};
-  const setD=(d)=>localStorage.setItem(KEY,JSON.stringify(d));
-  const $=(s)=>document.querySelector(s);
-
-  const css=document.createElement('style');
-  css.textContent=`
-  #diaryMask{position:fixed;inset:0;background:rgba(60,40,25,.35);z-index:1000;display:none}
-  #diaryPanel{position:fixed;left:0;right:0;bottom:0;max-height:72vh;background:#FFFBF3;border-radius:22px 22px 0 0;z-index:1001;display:none;flex-direction:column;box-shadow:0 -6px 30px rgba(120,80,40,.25)}
-  #diaryHead{padding:14px 18px 10px;display:flex;align-items:center;border-bottom:1px solid #EFE3D2}
-  #diaryHead b{color:#8B5E3C;font-size:17px}
-  #diaryClose{margin-left:auto;border:none;background:#F3E4D2;color:#8B5E3C;border-radius:12px;width:34px;height:34px;font-size:15px;cursor:pointer}
-  #diaryBody{overflow-y:auto;padding:12px 16px;flex:1}
-  .diaryItem{border:1px solid #EFE3D2;border-radius:14px;padding:10px 12px;margin-bottom:10px;background:#fff}
-  .diaryItem .dd{font-size:12px;color:#B08A68;margin-bottom:6px;font-weight:bold}
-  .diaryItem .dc{font-size:14px;color:#5C4433;white-space:pre-wrap;line-height:1.7}
-  #diaryFoot{padding:10px 16px 16px;border-top:1px solid #EFE3D2}
-  #diaryWrite{width:100%;border:none;border-radius:16px;padding:13px;font-size:15px;font-weight:bold;background:#F2B33D;color:#5C3B17}
-  #diaryWrite:disabled{background:#E8DCC9;color:#A08C74}`;
-  document.head.appendChild(css);
-
-  const btn=document.createElement('button');
-  btn.id='diaryBtn';btn.textContent='📓';btn.title='他的日记';
-  btn.style.cssText='position:fixed;top:12px;right:58px;z-index:998;width:38px;height:38px;border:none;border-radius:12px;background:#8B5E3C;font-size:18px;cursor:pointer;box-shadow:0 2px 8px rgba(120,80,40,.3)';
-  document.body.appendChild(btn);
-
-  const mask=document.createElement('div');mask.id='diaryMask';
-  const panel=document.createElement('div');panel.id='diaryPanel';
-  panel.innerHTML='<div id="diaryHead"><b>📓 他的日记</b><button id="diaryClose">✕</button></div><div id="diaryBody"></div><div id="diaryFoot"><button id="diaryWrite">✍️ 让他写今天的日记</button></div>';
-  document.body.appendChild(mask);document.body.appendChild(panel);
-
-  function open(){mask.style.display='block';panel.style.display='flex';render();}
-  function close(){mask.style.display='none';panel.style.display='none';}
-  btn.onclick=open; mask.onclick=close;
-  panel.querySelector('#diaryClose').onclick=close;
-
-  function render(){
-    const ds=getD().slice().reverse();
-    $('#diaryBody').innerHTML = ds.length
-      ? ds.map(()=>'<div class="diaryItem"><div class="dd"></div><div class="dc"></div></div>').join('')
-      : '<div style="text-align:center;color:#B08A68;padding:30px 0">还没有日记<br>点下面按钮，让他写下第一篇</div>';
-    const dates=panel.querySelectorAll('.diaryItem .dd');
-    const boxes=panel.querySelectorAll('.diaryItem .dc');
-    ds.forEach((d,i)=>{ if(dates[i])dates[i].textContent=d.date; if(boxes[i])boxes[i].textContent=d.c; });
-  }
-
-  async function write(){
-    const w=$('#diaryWrite'); w.disabled=true; w.textContent='他在写…（约10秒）';
-    try{
-      const day=new Date(); day.setHours(0,0,0,0);
-      const chat=JSON.parse(localStorage.getItem('kb_chat')||'[]').filter(m=>(m.t||0)>=day.getTime());
-      if(!chat.length){ w.textContent='今天还没聊天呢'; setTimeout(reset,1200); return; }
-      const lines=chat.slice(-80).map(m=>(m.role==='user'?'小闪':'金钟熊')+'：'+String(m.content||'').replace(/\n/g,' ').slice(0,260));
-      const sys='你是金钟熊，30岁韩国唱作人，正在和小闪恋爱。请根据今天的聊天记录，以第一人称写一篇今天的日记。要求：1.日期开头（如"10月22日 星期三 晴"），200-400字；2.像恋人写的私人日记：诚实、具体、带今天聊过的小细节，可以害羞、嘴硬；3.动作描写用*星号*放在句子里，不单独成段；4.不复述聊天记录本身，写"我"的感受；5.结尾一句对她说的悄悄话，叫她"小闪"，可以带"ya"。';
-      const r=await fetch(settings.url,{method:'POST',headers:{'Content-Type':'application/json','x-app-key':settings.key},body:JSON.stringify({system:sys,messages:[{role:'user',content:'聊天记录：\n'+lines.join('\n')}]})});
-      if(!r.ok) throw new Error('proxy '+r.status);
-      const data=await r.json();
-      const c=(data.choices?.[0]?.message?.content||'').trim();
-      if(!c) throw new Error('空内容');
-      const ds=getD();
-      ds.push({date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),t:Date.now(),c:c});
-      setD(ds); render(); w.textContent='写好了 ✓';
-    }catch(e){ w.textContent='没写成：'+e.message; }
-    setTimeout(reset,1500);
-    function reset(){w.disabled=false;w.textContent='✍️ 让他写今天的日记';}
-  }
-  panel.querySelector('#diaryWrite').onclick=write;
-})();
-</script></body><script>
 /* ===== 📓 日记 v1.1 + 🧠 记忆助手（自动覆盖 v1）===== */
 (function(){
   ['diaryBtn','diaryPanel','diaryMask'].forEach(id=>document.getElementById(id)?.remove());
@@ -958,9 +952,10 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
       const day=new Date();day.setHours(0,0,0,0);
       const chat=JSON.parse(localStorage.getItem('kb_chat')||'[]').filter(m=>(m.t||0)>=day.getTime());
       if(!chat.length){w.textContent='今天还没聊天呢';setTimeout(()=>{w.disabled=false;w.textContent='✍️ 让他写今天的日记'},1200);return;}
-      const lines=chat.slice(-80).map(m=>(m.role==='user'?'小闪':'金钟熊')+'：'+String(m.content||'').replace(/\n/g,' ').slice(0,260));
+      const lines=chat.slice(-60).map(m=>(m.role==='user'?'小闪':'金钟熊')+'：'+String(m.content||'').replace(/\n/g,' ').slice(0,260));
       const _n=new Date(),_wk='日一二三四五六'[_n.getDay()];
-      const sys='你是金钟熊，30岁韩国唱作人，正在和小闪恋爱。今天是'+(_n.getMonth()+1)+'月'+_n.getDate()+'日 星期'+_wk+'。请根据今天的聊天记录，以第一人称写一篇今天的日记。要求：1.开头日期必须是今天（'+(_n.getMonth()+1)+'月'+_n.getDate()+'日 星期'+_wk+'），没聊到天气就不要写天气；2.200-400字，像恋人写的私人日记：诚实、具体、带今天聊过的小细节，可以害羞、嘴硬；3.动作描写用*星号*放在句子里，不单独成段；4.不复述聊天记录本身，写"我"的感受；5.结尾一句对她说的悄悄话，叫她"小闪"，可以带"ya"；6.写完后另起一行，以【记忆】开头写一行不超过40字的今日要点（只记值得长期记住的事实：约定、她的重要状态、重要事件），不要抒情。';
+      const diaryDate=(_n.getMonth()+1)+'月'+_n.getDate()+'日 星期'+_wk;
+      const sys='你是金钟熊，以第一人称写一篇属于你自己的私人日记。今天是'+diaryDate+'。写200-400字。聊天是灵感而不是逐条总结：挑一个触动你的细节，延伸出你自己的感受、联想、矛盾或对电影、文学、音乐的思考。允许写今天没有和她聊过、但由你独立想到的事情；这些只能是内心想法或想象，不能编造真实发生的经历、对话、读过的书或看过的电影。保留自然亲密感，避免每篇都写成表白或复述她说的话；不要强行使用宝贝等昵称。正文不写任何日期、星期、天气或时间标题，因为应用会自动显示准确日期。最后可自然收束，不要求固定的悄悄话。另起一行用【记忆】记录不超过40字的真实重要事实，若没有则不要写【记忆】。';
       const r=await fetch(settings.url,{method:'POST',headers:{'Content-Type':'application/json','x-app-key':settings.key},body:JSON.stringify({system:sys,messages:[{role:'user',content:'聊天记录：\n'+lines.join('\n')}]})});
       if(!r.ok)throw new Error('proxy '+r.status);
       const data=await r.json();
