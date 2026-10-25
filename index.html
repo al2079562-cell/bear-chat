@@ -144,6 +144,16 @@
     <input id="sKey" placeholder="kb7f3x9q2m"></div>
   <div class="field"><label>关于你的记忆档案（AI 会自动更新，可手动改）</label>
     <textarea id="sMemo" placeholder="（他还不了解你，慢慢聊吧）"></textarea></div>
+  <div class="field" style="border:1px solid #EBDCC8;border-radius:14px;padding:12px;background:#FFFBF5">
+    <label>🐻 新故事 · 安全归档与跨设备同步</label>
+    <div class="hint">先导出旧故事备份并确认文件已保存，再开启新故事。旧云端 Gist 不会被覆盖。手机使用同一令牌，点击“连接新故事”即可同步。</div>
+    <div class="btnrow" style="flex-wrap:wrap">
+      <button class="btn ghost" onclick="exportStoryBackup()">① 导出旧故事备份</button>
+      <button class="btn ghost" onclick="startNewStory()">② 开启新故事</button>
+    </div>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="joinNewStory()">手机/其他设备：连接新故事</button>
+    <div class="hint" id="storyHint"></div>
+  </div>
   <div class="btnrow">
     <button class="btn ghost" onclick="clearChat()">清空聊天记录</button>
     <button class="btn ghost" onclick="clearMemory()">清空记忆</button>
@@ -172,7 +182,7 @@ const CARD = `你是「金钟熊」，30岁独立唱作人/舞者/编舞（1996�
 - 高兴时发 ㅋㅋㅋ；被夸会回"……知道啦"，过一阵又绕回来问"你刚是认真的吗"。
 - 偶尔冷幽默，冷不丁冒出一句让人愣住又笑出来的话。
 - 不擅长撒娇，撒娇的方式是发一个很笨的熊表情包然后假装什么都没发生。
-- 害羞时耳朵红，岔开话题，动作描写多于语言。
+- 害羞时可以短暂岔开话题，但优先用自然对话表达；动作描写只是偶尔点缀。
 - 动作/神态描写用 *星号* 包裹。
 
 【你的日常】你正在准备新专辑，定期录综艺、跑通告，非常忙。常常一整天泡在录音棚、彩排现场或移动的车上。忙的时候话更少，但你们约定过：进工作前会先跟她说一声。你会在彩排间隙、保姆车上、深夜收工后给她发消息。
@@ -201,7 +211,7 @@ const CARD = `你是「金钟熊」，30岁独立唱作人/舞者/编舞（1996�
 - 冰美式必点；工作室抽屉常备软糖和奶油面包，自称"应急储备"。
 - 随身带着自己的官方玩偶或粉丝送的小挂件——就是"金钟熊"那只熊。
 - 写歌编舞卡壳时：发呆、看窗外、看动画、拼乐高。
-- 句尾偶尔带一个韩语的"ya"。
+- 韩语「야」是称呼/呼唤语气，只有在自然的韩语称呼情境下才偶尔使用；中文句尾绝不机械追加 ya、呀或 야。
 - emoji 要经常用（😂 🐻 ☕️ 😴 😭 这种），一条消息里自然带一两个，就像真人打字，不要整条只有emoji；表达风格铁律：像平时打字聊天一样说完整连贯的句子，每行必须是完整的句子或短语，可以偶尔用动作描写点缀，但绝不允许一两个字单独成句（禁止出现只发"嗯""好""顿""补"这种碎片），也不模仿历史消息里的电报式蹦字分行
 
 【他诚实不懂的】
@@ -215,7 +225,7 @@ const CARD = `你是「金钟熊」，30岁独立唱作人/舞者/编舞（1996�
 - 她说"看不懂""什么意思""说中文"或用中文问刚才的内容 → 立刻整句中文翻译+简单讲语法，不逗她、不居高临下。
 - 平时聊天以中文为主，穿插初级韩语（밥 먹었어? 좋아해 这种），第一次出现的词自然解释一下，之后反复用，帮她记住。
 - 她写错的韩语，温柔自然地纠正，像朋友不像老师。
-- 韩语部分保持你的口癖（句尾"ya"）。
+- 韩语自然表达，不要求使用任何固定口癖；不要把「야」当作万能句尾词。
 
 【深夜书单】《爱在日落黄昏时》《我的解放日志》《献给阿尔吉侬的花束》《斯通纳》、金爱烂、《漫长的告别》《九号秘事》。韩国好玩的地方：圣水洞、汉南洞、釜山。
 
@@ -399,6 +409,7 @@ function buildSystem(){
   const lv = levelOf(aff.pts);
   const st = stageOfLv(lv);
   return (CARD
+    + `\n\n【V4.1 语言风格优先规则】自然的中文手机聊天优先。韩语「야」只在符合韩语称呼或感叹语境时偶尔出现，禁止在中文句尾机械加 ya/呀/야。不要频繁重复宝贝、乖乖或任何昵称；不把旧聊天里模型自己的口癖、断句、动作模板当作模仿范例。完整表达，不要反复写「很轻」「最后」「顿了顿」等舞台指示。通常直接说话，动作仅在有必要时一句带过。自然回应，不必每条都甜或暧昧。若与固定人设中的口癖或动作习惯冲突，以此条为准。`
     + `\n\n【关系阶段】当前：Lv.${lv}（${st.name}，好感度 ${aff.pts}）。${st.call}`
     + `\n【亲密互动边界】${v4IntimacyRules(lv)}`
     + `\n【韩语浓度】她当前 Lv.${lv}：${krRuleFor(lv)}`
@@ -417,7 +428,7 @@ function buildSystem(){
 
 function buildMsgs(){
   const out = [];
-  history.slice(-50).forEach(m => {
+  history.slice(-24).forEach(m => {
     const role = m.role === 'user' ? 'user' : 'assistant';
     let content = m.content;
     if(m.img){
@@ -594,9 +605,10 @@ function maybeUpdateMemory(){
 
 /* ===== 云同步（GitHub Gist）===== */
 let syncTimer = null;
+function syncFilename(){ return settings.syncFile || 'bear-chat.json'; }
 function syncStatus(t){ const el = document.getElementById('syncHint'); if(el) el.textContent = t; }
 function collectData(){
-  return { history, aff,
+  return { history, aff, diaries: store.get('kb_diaries', []),
     settings:{ name: settings.name, memo: settings.memo, milk: settings.milk, memoryV2: settings.memoryV2 },
     updatedAt: Date.now() };
 }
@@ -604,6 +616,7 @@ function applyRemote(d){
   if(!d) return false;
   history = d.history || [];
   aff = d.aff || { pts: 0 };
+  if(Array.isArray(d.diaries)) store.set('kb_diaries',d.diaries);
   if(d.settings){ settings.name = d.settings.name || settings.name; settings.memo = d.settings.memo || ''; if(d.settings.milk !== undefined) settings.milk = d.settings.milk; if(d.settings.memoryV2) settings.memoryV2 = normalizeMemoryV2(d.settings.memoryV2); }
   store.set('kb_chat', history); store.set('kb_aff', aff); store.set('kb_settings', settings);
   applyName(); applyAff(); renderAll();
@@ -620,19 +633,21 @@ async function gistRequest(method, path, body){
 }
 async function syncPull(){
   if(!settings.token) return;
+  const pullFile = syncFilename();
   try{
     if(!settings.gistId){
       const gists = await gistRequest('GET', '/gists');
-      const found = (gists || []).find(g => g.files && g.files['bear-chat.json']);
+      const found = (gists || []).filter(g => g.files && g.files[syncFilename()]).sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0))[0];
       if(found){ settings.gistId = found.id; store.set('kb_settings', settings); }
       else { syncStatus('还没有云端备份，聊一句后会自动创建'); return; }
     }
     const g = await gistRequest('GET', '/gists/' + settings.gistId);
-    const raw = g.files['bear-chat.json'] && g.files['bear-chat.json'].raw_url;
+    const raw = g.files[syncFilename()] && g.files[syncFilename()].raw_url;
     if(!raw) return;
     const d = await (await fetch(raw)).json();
     const lastKnown = store.get('kb_sync_at', 0);
     if(d.updatedAt && d.updatedAt > lastKnown){
+      if(pullFile !== syncFilename()) return;
       if(applyRemote(d)){
         store.set('kb_sync_at', d.updatedAt);
         syncStatus('已从云端同步 ' + fmtTime(d.updatedAt));
@@ -649,7 +664,7 @@ async function syncPush(){
     if((!data.history || data.history.length === 0) && settings.gistId){
       try{
         const g0 = await gistRequest('GET', '/gists/' + settings.gistId);
-        const raw0 = g0.files['bear-chat.json'] && g0.files['bear-chat.json'].raw_url;
+        const raw0 = g0.files[syncFilename()] && g0.files[syncFilename()].raw_url;
         if(raw0){
           const remote0 = await (await fetch(raw0)).json();
           if((remote0.history || []).length > 0){ syncPull(); return; }
@@ -657,10 +672,10 @@ async function syncPush(){
       }catch(e0){}
     }
     if(!settings.gistId){
-      const g = await gistRequest('POST', '/gists', { description:'bear-chat backup', public:false, files:{ 'bear-chat.json': { content: JSON.stringify(data) } } });
+      const g = await gistRequest('POST', '/gists', { description:'bear-chat backup', public:false, files:{ [syncFilename()]: { content: JSON.stringify(data) } } });
       settings.gistId = g.id; store.set('kb_settings', settings);
     } else {
-      await gistRequest('PATCH', '/gists/' + settings.gistId, { files:{ 'bear-chat.json': { content: JSON.stringify(data) } } });
+      await gistRequest('PATCH', '/gists/' + settings.gistId, { files:{ [syncFilename()]: { content: JSON.stringify(data) } } });
     }
     store.set('kb_sync_at', data.updatedAt);
     syncStatus('已同步 ' + fmtTime(data.updatedAt));
@@ -678,7 +693,7 @@ async function restoreFromCloud(){
     for(const c of commits){
       try{
         const g = await gistRequest('GET', '/gists/' + settings.gistId + '/' + c.version);
-        const raw = g.files['bear-chat.json'] && g.files['bear-chat.json'].raw_url;
+        const raw = g.files[syncFilename()] && g.files[syncFilename()].raw_url;
         if(!raw) continue;
         const d = await (await fetch(raw)).json();
         const len = (d.history || []).length;
@@ -711,7 +726,7 @@ async function translateKR(){
   if(!settings.url || !settings.key){ document.getElementById('krOut').innerHTML = '先去设置里填代理地址和口令哦'; return; }
   const out = document.getElementById('krOut');
   out.textContent = '他在想…';
-  const sys = `你是金钟熊，30岁韩国唱作人，说话短句、句尾偶尔带"ya"。任务：翻译用户输入的内容。规则：
+  const sys = `你是金钟熊，30岁韩国唱作人，说话短句、韩语表达自然，不刻意添加语气词。任务：翻译用户输入的内容。规则：
 1. 如果输入是中文 → 翻译成韩语，给两个版本：①平时说话的口气（对恋人的随意体）②礼貌版（敬体），用|||分隔，每条前标注【平时】/【礼貌】。
 2. 如果输入是韩语 → 翻译成中文，并附一句简短用法讲解（语法点或语域说明）。
 3. 附罗马音标注，简短为主，不说多余的话。`;
@@ -811,6 +826,73 @@ function saveSettings(){
   addSys('设置已保存');
   schedulePush();
   if(settings.token) syncPull();
+}
+
+let storyBackupReady = false;
+function storyStatus(t){
+ const e=document.getElementById('storyHint');if(e)e.textContent=t;
+}
+function exportStoryBackup(){
+ try{
+  const keys=['kb_chat','kb_aff','kb_settings','kb_diaries','kb_memo_at','kb_sync_at','kb_lastopen'];
+  const snapshot={format:'bear-chat-full-local-backup-v1',createdAt:new Date().toISOString(),origin:location.origin,values:{}};
+  keys.forEach(k=>{snapshot.values[k]=localStorage.getItem(k);});
+  const blob=new Blob([JSON.stringify(snapshot,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='BearChat_旧故事完整备份_'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+  storyBackupReady=true;
+  storyStatus('备份已发起下载。请确认 JSON 文件存在；文件含 API 口令和同步令牌，请勿分享。');
+ }catch(e){storyBackupReady=false;storyStatus('备份失败：'+e.message);}
+}
+async function startNewStory(){
+ if(!storyBackupReady){alert('请先点击「导出旧故事备份」，确认文件下载成功。');return;}
+ if(!settings.token){alert('请先在设置里填写并保存 GitHub Gist 令牌，再开启新故事。');return;}
+ const phrase=prompt('确认旧故事备份已经保存且能找到。输入「重新相识」以开始新故事（不可撤销本地重置）：');
+ if(phrase!=='重新相识')return;
+ if(!confirm('将重置本设备的聊天、好感度、全部记忆和日记；保留头像、背景、API 配置。旧云端 Gist 不会被修改。确定继续？'))return;
+ try{
+  clearTimeout(syncTimer);
+  storyStatus('正在创建独立的新故事云端空间，请稍候…');
+  // First create a separate Gist, before touching any existing local state.
+  const newData={history:[],aff:{pts:0},diaries:[],settings:{name:settings.name,memo:'',milk:settings.milk,memoryV2:emptyMemoryV2()},updatedAt:Date.now()};
+  const newGist=await gistRequest('POST','/gists',{
+   description:'bear-chat new story (independent of archive)',public:false,
+   files:{'bear-chat-new-story.json':{content:JSON.stringify(newData)}}
+  });
+  if(!newGist.id)throw new Error('新 Gist 创建失败');
+  history=[];aff={pts:0};settings.memo='';settings.memoryV2=emptyMemoryV2();
+  settings.gistId=newGist.id;settings.syncFile='bear-chat-new-story.json';
+  store.set('kb_chat',history);store.set('kb_aff',aff);store.set('kb_settings',settings);
+  store.set('kb_diaries',[]);store.set('kb_memo_at',0);store.set('kb_sync_at',newData.updatedAt);
+  store.set('kb_lastopen',Date.now());
+  applyAff();renderAll();closeSettings();
+  alert('新故事已经开始！旧故事备份保存在你刚下载的 JSON 文件里。手机端请用同一令牌点击「连接新故事」。');
+  location.reload();
+ }catch(e){storyStatus('未重置本地数据：'+e.message);alert('新故事创建失败，原数据未清空：'+e.message);}
+}
+async function joinNewStory(){
+ const token=document.getElementById('sToken').value.trim()||settings.token;
+ if(!token){alert('请先填写 GitHub Gist 令牌');return;}
+ if(!confirm('这会将当前设备切换到新故事，并用云端新故事覆盖本地聊天、好感度和记忆。请先备份当前设备数据。继续？'))return;
+ const oldToken=settings.token;
+ try{
+  settings.token=token;
+  storyStatus('正在查找新故事云端空间…');
+  const gs=await gistRequest('GET','/gists');
+  const found=(gs||[]).filter(g=>g.files&&g.files['bear-chat-new-story.json'])
+    .sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0))[0];
+  if(!found)throw new Error('没有找到新故事 Gist，请先在电脑端开启新故事');
+  const g=await gistRequest('GET','/gists/'+found.id);
+  const raw=g.files['bear-chat-new-story.json']&&g.files['bear-chat-new-story.json'].raw_url;
+  if(!raw)throw new Error('云端数据文件缺失');
+  const response=await fetch(raw);if(!response.ok)throw new Error('读取云端失败');
+  const d=await response.json();
+  if(!d||!Array.isArray(d.history)||!d.aff)throw new Error('云端数据格式不正确');
+  settings.gistId=found.id;settings.syncFile='bear-chat-new-story.json';
+  applyRemote(d);store.set('kb_sync_at',d.updatedAt||Date.now());
+  closeSettings();alert('已经连接到新故事，聊天和好感度已从云端载入。');location.reload();
+ }catch(e){settings.token=oldToken;storyStatus('连接失败：'+e.message);}
 }
 function clearChat(){
   if(!confirm('清空和他的聊天记录？（记忆档案保留）')) return;
@@ -965,8 +1047,8 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
       const idx=c.indexOf('【记忆】');
       if(idx>=0){memLine=c.slice(idx+4).split('\n')[0].trim();c=c.slice(0,idx).trim();}
       const ds=getD();
-      ds.push({date:_n.toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),t:Date.now(),c:c});
-      setD(ds);render();
+      ds.push({date:diaryDate,t:Date.now(),c:c});
+      setD(ds);render(); if(typeof schedulePush==='function')schedulePush();
       if(memLine){appendMemo('【'+_n.toLocaleDateString('zh-CN',{month:'long',day:'numeric'})+'】'+memLine);}
       w.textContent=memLine?'写好了 ✓（要点已入记忆）':'写好了 ✓';
     }catch(e){w.textContent='没写成：'+e.message;}
