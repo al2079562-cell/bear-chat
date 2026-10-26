@@ -403,6 +403,16 @@ function renderAll(){
   history.forEach(m => addBubble(m.role, m.content, m.t));
 }
 
+function recentConversationClues(){
+  // Include both speakers' earlier messages, including proactive messages.
+  // The most recent 40 messages are already passed verbatim to the model.
+  return history.slice(-90,-40).filter(m=>!m.img && typeof m.content==='string')
+    .slice(-24).map(m=>{
+      const when=m.t ? new Date(m.t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '时间未知';
+      return `${when} ${m.role==='user'?'她':'你'}：${m.content.slice(0,105)}`;
+    }).join('\n') || '无';
+}
+
 function buildSystem(){
   const d = new Date();
   const wk = ['日','一','二','三','四','五','六'][d.getDay()];
@@ -417,7 +427,9 @@ function buildSystem(){
     + `\n\n【现在】今天是${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（星期${wk}），当前是${daypart(d.getHours())} ${ampmTime()}。时间铁律：①对话场景永远以这里的时段为准，绝不延续历史对话里的时间场景（昨晚的睡觉场景不会延续到今天白天，上午他还在被窝是绝对禁止的）；②约定"周X"时，本周已过的星期默认指下一周；③谈论未来的约定必须用将来时，绝不允许把还没发生的事说成已经发生；④时区铁律：她在东八区（中国），你在东九区（首尔），只差一小时——她说下午时你那边最多傍晚，绝不许出现'我这边是半夜''你那几点'这种时差错觉；如果你出差到了有时差的地方，要先跟她说明。⑤如果她纠正时间或场景（比如说"现在还是下午"）：立刻*看了一眼时间*承认记混了（"……啊。"），顺着她的时间自然切换，绝不反驳、绝不坚持错误的场景。⑥对话历史里的时间描述属于过去的剧情，与【现在】冲突时一律以【现在】为准。`
     + `\n\n【旧版记忆档案】\n` + (settings.memo || '（还没有。慢慢了解她：她的喜好、最近在忙什么、你们的约定……）')
     + `\n\n【结构化共同记忆 v2】\n` + JSON.stringify(settings.memoryV2 || emptyMemoryV2())
-    + `\n【记忆优先级】用户最新明确纠正 > 结构化记忆中已更新状态 > 旧档案。取消或完成的计划不得当作仍待执行。` 
+    + `\n【记忆优先级】用户最新明确纠正 > 结构化记忆中已更新状态 > 旧档案。取消或完成的计划不得当作仍待执行。`
+    + `\n【连续对话原则】最近的聊天记录是第一手证据。你自己主动说过的话也是真实对话的一部分。她接着问“脚踝好些了吗”“几点吃饭”等，先回顾上下文再回答，不能无故说“怎么突然问”。约定只有明确答应才算成立；不确定的时间、地点或事实不要编造。记得事情也不必每句话主动提。`
+    + `\n【近期对话线索（只用于补足上下文，不是新的事实）】\n${recentConversationClues()}` 
     + `\n（标注"已完结"的事项不要再主动提起，除非她先提起。）`
     + ((d.getHours() >= 6 && d.getHours() < 18)
         ? `\n\n【出戏提醒】此刻是${daypart(d.getHours())}。如果你正在说睡觉、枕头、晚安之类的内容，立刻停止并切换到清醒的白天场景（工作室、路上、咖啡店、练习室），当作新的一天开始。`
@@ -428,7 +440,7 @@ function buildSystem(){
 
 function buildMsgs(){
   const out = [];
-  history.slice(-24).forEach(m => {
+  history.slice(-40).forEach(m => {
     const role = m.role === 'user' ? 'user' : 'assistant';
     let content = m.content;
     if(m.img){
@@ -521,10 +533,9 @@ async function bearReply(){
           history.push({ role:'bear', content:p, t:Date.now() });
           addBubble('bear', p);
           store.set('kb_chat', history);
-          if(i === parts.length-1) gainAff(parts.join(''));
+          if(i === parts.length-1){ gainAff(parts.join('')); maybeUpdateMemory(); }
         }, i * 1000);
       });
-      maybeUpdateMemory();
       schedulePush();
     }, wait);
   }catch(e){
@@ -555,12 +566,17 @@ function parseMemoryJSON(raw){
   if(a<0 || b<=a) return null;
   try { return JSON.parse(t.slice(a,b+1)); } catch(e) { return null; }
 }
-function maybeUpdateMemory(){
+let memoryBusy = false;
+function maybeUpdateMemory(force=false){
   const userCount = history.filter(m=>m.role==='user').length;
-  // 更新发生在完整回复写入历史之后；每 4 轮更新一次，避免每条消息都额外消耗模型调用。
-  if(userCount < 1 || userCount % 4 !== 0) return;
-  if(store.get('kb_memo_at', 0) >= userCount) return;
-  store.set('kb_memo_at', userCount);
+  const last = history[history.length-1];
+  if(!last || last.role!=='bear' || memoryBusy) return;
+  const signature = `${history.length}:${last.t || 0}`;
+  if(store.get('kb_memory_signature','')===signature) return;
+  // Every two user turns, or immediately after a proactive exchange.
+  if(!force && (userCount<1 || userCount%2!==0)) return;
+  if(!settings.url || !settings.key) return;
+  memoryBusy = true;
   const memoryTask = `你是对话记忆整理器，不是聊天角色。请只根据下面真实聊天记录提取值得长期保留的信息，不要推测、补写或把计划写成已发生。
 只输出合法 JSON，不要 Markdown、解释或代码围栏，格式必须如下：
 {
@@ -581,7 +597,7 @@ function maybeUpdateMemory(){
 当前日期：${localDateKey()}。
 已有结构化记忆：${JSON.stringify(settings.memoryV2 || emptyMemoryV2())}
 旧版记忆档案（只作参考，不要原样重抄）：${settings.memo || '无'}`;
-  const msgs = buildMsgs().slice(-20);
+  const msgs = buildMsgs().slice(-36);
   fetch(settings.url, {
     method:'POST',
     headers:{'Content-Type':'application/json','x-app-key':settings.key},
@@ -590,17 +606,19 @@ function maybeUpdateMemory(){
     .then(data=>{
       const raw = data.choices?.[0]?.message?.content || '';
       const parsed = parseMemoryJSON(raw);
-      if(!parsed) return;
+      if(!parsed) throw new Error("invalid memory JSON");
       const mem = normalizeMemoryV2(settings.memoryV2);
       ['profile','recentEvents','agreements','corrections','openLoops'].forEach(k=>{
         mem[k] = mergeMemoryItems(mem[k], parsed[k], k==='profile'?20:30);
       });
       mem.updatedAt = Date.now();
       settings.memoryV2 = mem;
+      store.set('kb_memory_signature', signature);
       store.set('kb_settings', settings);
       schedulePush();
       // 静默保存，避免每次记忆整理都打断聊天。
-    }).catch(()=>{});
+    }).catch(e=>{ console.warn('Memory update failed:',e); })
+      .finally(()=>{ memoryBusy=false; });
 }
 
 /* ===== 云同步（GitHub Gist）===== */
@@ -861,7 +879,7 @@ async function startNewStory(){
    files:{'bear-chat-new-story.json':{content:JSON.stringify(newData)}}
   });
   if(!newGist.id)throw new Error('新 Gist 创建失败');
-  history=[];aff={pts:0};settings.memo='';settings.memoryV2=emptyMemoryV2();
+  history=[];aff={pts:0};settings.memo='';settings.memoryV2=emptyMemoryV2();store.set('kb_memory_signature','');
   settings.gistId=newGist.id;settings.syncFile='bear-chat-new-story.json';
   store.set('kb_chat',history);store.set('kb_aff',aff);store.set('kb_settings',settings);
   store.set('kb_diaries',[]);store.set('kb_memo_at',0);store.set('kb_sync_at',newData.updatedAt);
@@ -926,7 +944,7 @@ function fireProactive(){
       showTyping(false); proactiveBusy = false;
       if(badReply(reply) || !reply) return;
       reply.split('|||').map(s=>s.trim()).filter(Boolean).slice(0,3).forEach((p,i)=>{
-        setTimeout(()=>{ history.push({role:'bear', content:p, t:Date.now()}); addBubble('bear', p); store.set('kb_chat', history); }, i*1000);
+        setTimeout(()=>{ history.push({role:'bear', content:p, t:Date.now()}); addBubble('bear', p); store.set('kb_chat', history); if(i===Math.min(2, reply.split('|||').map(s=>s.trim()).filter(Boolean).length-1)){ maybeUpdateMemory(true); schedulePush(); } }, i*1000);
       });
     })
     .catch(()=>{ showTyping(false); proactiveBusy = false; });
