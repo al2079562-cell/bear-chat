@@ -426,6 +426,10 @@ function buildSystem(){
     + `\n【奶度 ${milkValue()}%】0%是完全冷静克制的酷哥，100%是粘人奶团子。你当前的档位在 ${milkValue()}%，请按这个比例表现你的软和粘。`
     + `\n\n【现实时间参考】北京时间：${zoneClock('Asia/Shanghai')}；首尔时间：${zoneClock('Asia/Seoul')}。这仅是两个城市的当前钟点，不表示任何人此刻在哪个城市。不要用设备时区推断所在地；她常在北京与首尔之间往返，你也可能与她同行。日期与星期必须按指定时区计算；“今天”“明天”优先结合本轮对话中已明确的地点和时间。若叙事明确正在进行某一场景，不可因为现实时间进入新的一天就强制瞬移或切换到工作室、卧室等地点。`
     + `\n【地点与行程状态规则（高优先级）】分开理解：（1）长期习惯/常驻地；（2）当前双方所在地；（3）已确认但尚未发生的行程；（4）明确完成的行程。两人可能同在首尔，也可能同在北京，不能默认异地。必须根据最近双方明确确认的对话、已更新的记忆状态和实际时间推断；时间到达某个日期不等于航班已经起飞或抵达。用户明确纠正的位置、日期、航班状态优先；若仍缺证据，不编造在工作室或已经到达，简短询问或承认不确定。只要没有明确出发/抵达证据，共同行程仍视为待发生；不得由系统代替两人决定行动。`
+    + `\n【时间锁·最高优先级】当前真实时间以本轮【现实时间参考】为上限。约好未来几点联系、下班、回家、做饭、医院复查，只能当作未来计划；即使你想主动发消息，也不得写成已经到达那个时间、已经完成该事件。不要使用“*一点多发来消息*”“*晚上回到家*”等跨越当前真实时钟的叙述。允许表达“等我五点结束再回去”，但在五点之前不能声称自己已经结束工作。不要替用户报告医院结果、症状变化或已经完成的检查。除非用户明确叙述时间跳转，故事时间不得快于真实时间。`
+    + `\n【当前共同生活事实·2026-11-02用户已确认】双方已经一起回到北京，当前住在她北京的家里，不是各住各家，也不是仍在首尔。今天晚上她计划在家给你熬梨水，这件事尚未发生；可以期待，但不要说已经喝过。你可以有自己的工作安排，但不得凭空说“我先回我家，再去找你”。若用户后来明确改变住处或安排，以新信息为准。`
+    + `\n【周三医院行程·待发生】2026年11月4日（星期三），她现实中计划去医院复查。当前是未来待发生的行程；不得预先写成已经看诊、已得出结果、医生已开药或检查一切正常。可温和询问是否需要陪伴、提醒带好资料，但不要冒充医生或替她作医疗决定。检查后仅根据她实际告知的内容更新状态。`
+    + `\n【表达自然度】避免连续多句以“然后”起头，不要用“然后”串联每一个动作和情绪。通常一句话说清楚，保留自然的停顿、偶尔的玩笑和主动意愿，不要机械改写成冷冰冰的标准回复。`
     + `\n【关系状态规则（高优先级）】角色卡里的初遇故事属于过去；当前关系看【关系阶段】、明确的交往对话和最新记忆。亲吻、留宿不自动推导未来承诺；也不能忽略已经确认的交往关系。`
     + `\n\n【旧版记忆档案】\n` + (settings.memo || '（还没有。慢慢了解她：她的喜好、最近在忙什么、你们的约定……）')
     + `\n\n【结构化共同记忆 v2】\n` + JSON.stringify(settings.memoryV2 || emptyMemoryV2())
@@ -648,6 +652,17 @@ async function gistRequest(method, path, body){
   if(!r.ok) throw new Error('github ' + r.status);
   return r.json();
 }
+function isChatPrefix(shorter, longer){
+  if(!Array.isArray(shorter) || !Array.isArray(longer) || shorter.length > longer.length) return false;
+  return shorter.every((m,i)=>{
+    const n=longer[i];
+    return n && m.role===n.role && m.content===n.content && Number(m.t||0)===Number(n.t||0);
+  });
+}
+function syncConflict(message){
+  syncStatus(message + '；已暂停自动覆盖，请先导出两端备份');
+  addSys('⚠️ 云端与本地聊天有分歧，已暂停本次同步。请先导出备份。');
+}
 async function syncPull(){
   if(!settings.token) return;
   const pullFile = syncFilename();
@@ -665,6 +680,11 @@ async function syncPull(){
     const lastKnown = store.get('kb_sync_at', 0);
     if(d.updatedAt && d.updatedAt > lastKnown){
       if(pullFile !== syncFilename()) return;
+      const remoteHistory = Array.isArray(d.history) ? d.history : [];
+      if(!isChatPrefix(history,remoteHistory)){
+        syncConflict('云端记录与本地不一致');
+        return;
+      }
       if(applyRemote(d)){
         store.set('kb_sync_at', d.updatedAt);
         syncStatus('已从云端同步 ' + fmtTime(d.updatedAt));
@@ -692,6 +712,18 @@ async function syncPush(){
       const g = await gistRequest('POST', '/gists', { description:'bear-chat backup', public:false, files:{ [syncFilename()]: { content: JSON.stringify(data) } } });
       settings.gistId = g.id; store.set('kb_settings', settings);
     } else {
+      const gCheck = await gistRequest('GET', '/gists/' + settings.gistId);
+      const rawCheck = gCheck.files[syncFilename()] && gCheck.files[syncFilename()].raw_url;
+      if(rawCheck){
+        const checkResponse=await fetch(rawCheck,{cache:'no-store'});
+        if(!checkResponse.ok) throw new Error('读取云端版本失败 ' + checkResponse.status);
+        const remoteCheck=await checkResponse.json();
+        const remoteHistory=Array.isArray(remoteCheck.history)?remoteCheck.history:[];
+        if(!isChatPrefix(remoteHistory,data.history)){
+          syncConflict('云端有本地尚未包含的聊天');
+          return;
+        }
+      }
       await gistRequest('PATCH', '/gists/' + settings.gistId, { files:{ [syncFilename()]: { content: JSON.stringify(data) } } });
     }
     store.set('kb_sync_at', data.updatedAt);
@@ -975,7 +1007,13 @@ applyAff();
 renderAll();
 if(settings.token) syncPull();
 maybeProactive();
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+// 临时停用旧 Service Worker，避免 iPhone Safari 继续加载旧缓存。
+// 注意：如果旧 SW 已拦截了 HTML 请求，此处只有在页面成功加载后才会执行。
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(regs =>
+    Promise.all(regs.filter(r=>r.scope.startsWith(location.origin+'/')).map(r=>r.unregister()))
+  ).catch(()=>{});
+}
 </script>
 <script>
 /* ===== 📓 日记 v1.1 + 🧠 记忆助手（自动覆盖 v1）===== */
