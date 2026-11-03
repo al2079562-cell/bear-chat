@@ -134,14 +134,14 @@
     <div style="font-size:12px;color:#C4A586;margin-top:2px;" id="milkHint">当前：自动</div>
   </div>
   <div class="field"><label>云同步令牌（GitHub Token，只勾 gist 那个）</label>
-    <input id="sToken" placeholder="ghp_...">
+    <input id="sToken" placeholder="请填写新的 GitHub 令牌">
     <div style="font-size:12px;color:#C4A586;margin-top:4px;" id="syncHint">未开启同步</div>
     <button class="btn ghost" style="margin-top:8px;padding:8px;font-size:13px" onclick="restoreFromCloud()">从云端历史恢复（记录丢失时用）</button>
   </div>
   <div class="field"><label>代理地址（腾讯云函数网址）</label>
     <input id="sUrl" placeholder="https://xxx.workers.dev"></div>
   <div class="field"><label>通行口令</label>
-    <input id="sKey" placeholder="kb7f3x9q2m"></div>
+    <input id="sKey" placeholder="请输入代理口令"></div>
   <div class="field"><label>关于你的记忆档案（AI 会自动更新，可手动改）</label>
     <textarea id="sMemo" placeholder="（他还不了解你，慢慢聊吧）"></textarea></div>
   <div class="field" style="border:1px solid #EBDCC8;border-radius:14px;padding:12px;background:#FFFBF5">
@@ -152,6 +152,10 @@
       <button class="btn ghost" onclick="startNewStory()">② 开启新故事</button>
     </div>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="joinNewStory()">手机/其他设备：连接新故事</button>
+    <div class="hint" style="margin-top:12px;border-top:1px solid #EBDCC8;padding-top:12px"><b>电脑备份 → 当前设备（手动覆盖本地）</b><div>先分别保存两端备份。此操作只导入聊天、好感度、记忆、日记；不会替换当前设备的 API 口令、GitHub 令牌或 Gist ID，且会锁定自动同步。</div></div>
+    <input id="localBackupImportFile" type="file" accept=".json,application/json" style="display:none" onchange="importPCBackupIntoThisDevice(event)" />
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="document.getElementById('localBackupImportFile').click()">从电脑 JSON 备份导入到本设备</button>
+    <div class="hint" id="localImportHint"></div>
     <div class="hint" id="storyHint"></div>
   </div>
   <div class="btnrow">
@@ -418,6 +422,9 @@ function buildSystem(){
   const wk = ['日','一','二','三','四','五','六'][d.getDay()];
   const lv = levelOf(aff.pts);
   const st = stageOfLv(lv);
+  const lastActivityMsg = [...history].reverse().find(m=>m.role==='bear' && Number.isFinite(Number(m.t)) && m.t);
+  const elapsedMin = lastActivityMsg ? Math.max(0,Math.floor((Date.now()-Number(lastActivityMsg.t))/60000)) : null;
+  const elapsedNote = elapsedMin===null ? '暂无可靠的上次角色消息时间' : `距离你上一条确切发出的消息经过约${elapsedMin}分钟；这只是时间差，不证明任何事情已完成`;
   return (CARD
     + `\n\n【V4.1 语言风格优先规则】自然的中文手机聊天优先。韩语「야」只在符合韩语称呼或感叹语境时偶尔出现，禁止在中文句尾机械加 ya/呀/야。不要频繁重复宝贝、乖乖或任何昵称；不把旧聊天里模型自己的口癖、断句、动作模板当作模仿范例。完整表达，不要反复写「很轻」「最后」「顿了顿」等舞台指示。通常直接说话，动作仅在有必要时一句带过。自然回应，不必每条都甜或暧昧。若与固定人设中的口癖或动作习惯冲突，以此条为准。`
     + `\n\n【关系阶段】当前：Lv.${lv}（${st.name}，好感度 ${aff.pts}）。${st.call}`
@@ -425,11 +432,14 @@ function buildSystem(){
     + `\n【韩语浓度】她当前 Lv.${lv}：${krRuleFor(lv)}`
     + `\n【奶度 ${milkValue()}%】0%是完全冷静克制的酷哥，100%是粘人奶团子。你当前的档位在 ${milkValue()}%，请按这个比例表现你的软和粘。`
     + `\n\n【现实时间参考】北京时间：${zoneClock('Asia/Shanghai')}；首尔时间：${zoneClock('Asia/Seoul')}。这仅是两个城市的当前钟点，不表示任何人此刻在哪个城市。不要用设备时区推断所在地；她常在北京与首尔之间往返，你也可能与她同行。日期与星期必须按指定时区计算；“今天”“明天”优先结合本轮对话中已明确的地点和时间。若叙事明确正在进行某一场景，不可因为现实时间进入新的一天就强制瞬移或切换到工作室、卧室等地点。`
+    + `\n【事件时间锚】${elapsedNote}。任何新发生的事必须尊重该时间差和双方最新确认的进展。` 
     + `\n【地点与行程状态规则（高优先级）】分开理解：（1）长期习惯/常驻地；（2）当前双方所在地；（3）已确认但尚未发生的行程；（4）明确完成的行程。两人可能同在首尔，也可能同在北京，不能默认异地。必须根据最近双方明确确认的对话、已更新的记忆状态和实际时间推断；时间到达某个日期不等于航班已经起飞或抵达。用户明确纠正的位置、日期、航班状态优先；若仍缺证据，不编造在工作室或已经到达，简短询问或承认不确定。只要没有明确出发/抵达证据，共同行程仍视为待发生；不得由系统代替两人决定行动。`
     + `\n【时间锁·最高优先级】当前真实时间以本轮【现实时间参考】为上限。约好未来几点联系、下班、回家、做饭、医院复查，只能当作未来计划；即使你想主动发消息，也不得写成已经到达那个时间、已经完成该事件。不要使用“*一点多发来消息*”“*晚上回到家*”等跨越当前真实时钟的叙述。允许表达“等我五点结束再回去”，但在五点之前不能声称自己已经结束工作。不要替用户报告医院结果、症状变化或已经完成的检查。除非用户明确叙述时间跳转，故事时间不得快于真实时间。`
-    + `\n【当前共同生活事实·2026-11-02用户已确认】双方已经一起回到北京，当前住在她北京的家里，不是各住各家，也不是仍在首尔。今天晚上她计划在家给你熬梨水，这件事尚未发生；可以期待，但不要说已经喝过。你可以有自己的工作安排，但不得凭空说“我先回我家，再去找你”。若用户后来明确改变住处或安排，以新信息为准。`
-    + `\n【周三医院行程·待发生】2026年11月4日（星期三），她现实中计划去医院复查。当前是未来待发生的行程；不得预先写成已经看诊、已得出结果、医生已开药或检查一切正常。可温和询问是否需要陪伴、提醒带好资料，但不要冒充医生或替她作医疗决定。检查后仅根据她实际告知的内容更新状态。`
-    + `\n【表达自然度】避免连续多句以“然后”起头，不要用“然后”串联每一个动作和情绪。通常一句话说清楚，保留自然的停顿、偶尔的玩笑和主动意愿，不要机械改写成冷冰冰的标准回复。`
+    + `\n【最近确认的生活背景】截至2026-11-02的对话，双方一起回到北京、住在她北京的家中；这只是历史快照，不能永久当成实时所在地。梨水是当时的安排，不得在之后的日期仍断言“今晚尚未发生”，也不能自动假定已完成。任何新地点或行程以较新的双方明确交流为准；未确认就不要编造。`
+    + `\n【医院约定的动态状态】截至2026-11-02的对话，她计划2026-11-04去医院复查。日期临近、到达或过去不代表已看诊；不能预告结果、编造检查完成或替她确认。按最新真实对话更新：未由她确认完成就保持“待确认”，可以关心，但不擅自推进共同事件。`
+    + `\n【事件推进 V2 · 核心规则】将事件分为：①你的个人事件（排练、工作、吃饭、休息）可以随真实经过时间自然变化；②你们共同参与的事件（一起出门、医院、旅行、约会）只有对方实际参与对话并确认对应行动后才能进入下一阶段；③未来约定到点不等于已完成，仍需实际交流确认。绝不替她完成动作、安排、检查或制造对方的回应。` 
+    + `\n【个人活动的时间锚】生成本条回复前，核对最近一条明确的个人活动状态及其聊天时间。上一条你刚说“进去了”，现实只过去一分钟时，可以继续描述仍在里面，不能写成已经干完、收尾、出门。即使现实经过数小时，也只能做符合时长的有限推测；没有明确证据时用“应该差不多了”“我刚有空”或坦白状态，不把不确定的细节说成确定经历。一次回复不得跨越多个事件阶段，不能把一小时后的场景提前写出来。` 
+    + `\n【自然聊天，不是流水账】主动聊天是开启交流，而不是播放生活剧情。优先分享一个感受、观察、想法或提问；不必每次都交代工作进度。近几轮出现的“然后、然后”是模型自己形成的坏口癖，不要模仿。自然用完整中文句子，通常一条消息不超过一次“然后”，不要每行用“然后”起头，不使用“最后”“很轻”“声音软下来”等套路化舞台提示。不要为避免口癖而变得冷淡。`
     + `\n【关系状态规则（高优先级）】角色卡里的初遇故事属于过去；当前关系看【关系阶段】、明确的交往对话和最新记忆。亲吻、留宿不自动推导未来承诺；也不能忽略已经确认的交往关系。`
     + `\n\n【旧版记忆档案】\n` + (settings.memo || '（还没有。慢慢了解她：她的喜好、最近在忙什么、你们的约定……）')
     + `\n\n【结构化共同记忆 v2】\n` + JSON.stringify(settings.memoryV2 || emptyMemoryV2())
@@ -626,6 +636,10 @@ function maybeUpdateMemory(force=false){
 
 /* ===== 云同步（GitHub Gist）===== */
 let syncTimer = null;
+let syncBusy = false;
+let syncConflictNotified = false;
+const SYNC_LOCK_KEY = 'kb_sync_conflict_lock_v2';
+function syncLocked(){ return store.get(SYNC_LOCK_KEY, false) === true; }
 function syncFilename(){ return settings.syncFile || 'bear-chat.json'; }
 function syncStatus(t){ const el = document.getElementById('syncHint'); if(el) el.textContent = t; }
 function collectData(){
@@ -660,11 +674,17 @@ function isChatPrefix(shorter, longer){
   });
 }
 function syncConflict(message){
-  syncStatus(message + '；已暂停自动覆盖，请先导出两端备份');
-  addSys('⚠️ 云端与本地聊天有分歧，已暂停本次同步。请先导出备份。');
+  store.set(SYNC_LOCK_KEY, true);
+  clearTimeout(syncTimer);
+  syncStatus(message + '；自动同步已锁定（本地数据未覆盖）。请导出两端备份');
+  if(!syncConflictNotified){
+    addSys('⚠️ 云端与本地历史不同，自动同步已锁定；聊天仍可继续，暂不上传或覆盖。');
+    syncConflictNotified = true;
+  }
 }
 async function syncPull(){
-  if(!settings.token) return;
+  if(!settings.token || syncLocked() || syncBusy) return;
+  syncBusy = true;
   const pullFile = syncFilename();
   try{
     if(!settings.gistId){
@@ -692,9 +712,11 @@ async function syncPull(){
       }
     } else syncStatus('云端暂无更新');
   }catch(e){ syncStatus('同步失败：' + e.message); }
+  finally { syncBusy = false; }
 }
 async function syncPush(){
-  if(!settings.token) return;
+  if(!settings.token || syncLocked() || syncBusy) return;
+  syncBusy = true;
   try{
     const data = collectData();
     // 防护：本地记录为空、云端却有记录时 → 改为拉取，绝不用空数据覆盖云端
@@ -729,9 +751,11 @@ async function syncPush(){
     store.set('kb_sync_at', data.updatedAt);
     syncStatus('已同步 ' + fmtTime(data.updatedAt));
   }catch(e){ syncStatus('同步失败：' + e.message); }
+  finally { syncBusy = false; }
 }
 
 async function restoreFromCloud(){
+  if(syncLocked()){ syncStatus('存在云端分歧：为保护当前手机数据，已禁用直接恢复。请先保留两端备份。'); return; }
   if(!settings.token || !settings.gistId){ syncStatus('先填令牌并保存一次'); return; }
   if(!confirm('将从云端版本历史中找回记录最多的那个版本，覆盖当前本地。继续？')) return;
   syncStatus('正在翻云端历史…');
@@ -760,7 +784,11 @@ async function restoreFromCloud(){
   }catch(e){ syncStatus('恢复失败：' + e.message); }
 }
 
-function schedulePush(){ clearTimeout(syncTimer); syncTimer = setTimeout(syncPush, 8000); }
+function schedulePush(){
+  clearTimeout(syncTimer);
+  if(syncLocked()) return;
+  syncTimer = setTimeout(syncPush, 8000);
+}
 
 
 /* ===== 韩语翻译机 ===== */
@@ -874,9 +902,67 @@ function saveSettings(){
   applyName(); closeSettings();
   addSys('设置已保存');
   schedulePush();
-  if(settings.token) syncPull();
+  if(settings.token && !syncLocked()) syncPull();
 }
 
+/* ===== 安全本地导入：不改云端、不改当前设备的私密 API 配置 ===== */
+async function importPCBackupIntoThisDevice(event){
+  const input = event && event.target;
+  const file = input && input.files && input.files[0];
+  const hint = document.getElementById('localImportHint');
+  if(input) input.value = '';
+  if(!file) return;
+  const status = msg => { if(hint) hint.textContent = msg; };
+  try {
+    const backup = JSON.parse(await file.text());
+    if(backup.format !== 'bear-chat-full-local-backup-v1' || !backup.values || typeof backup.values !== 'object')
+      throw new Error('不是本程序导出的完整旧故事 JSON 备份');
+    const vals = backup.values;
+    const parseField = (key, fallback) => {
+      if(typeof vals[key] !== 'string') return fallback;
+      return JSON.parse(vals[key]);
+    };
+    const incoming = parseField('kb_chat', null);
+    const incAff = parseField('kb_aff', null);
+    const incSettings = parseField('kb_settings', {});
+    const incDiaries = parseField('kb_diaries', []);
+    if(!Array.isArray(incoming) || incoming.length === 0 || !incoming.every(m=> m && (m.role==='user'||m.role==='bear'||m.role==='system') && typeof m.content === 'string'))
+      throw new Error('备份聊天格式不正确或内容为空，已取消导入');
+    if(!incAff || typeof incAff !== 'object' || !Number.isFinite(Number(incAff.pts)))
+      throw new Error('备份好感度数据异常，已取消导入');
+    if(!incSettings || typeof incSettings !== 'object' || Array.isArray(incSettings))
+      throw new Error('备份设置格式异常，已取消导入');
+    if(!Array.isArray(incDiaries)) throw new Error('备份日记格式异常，已取消导入');
+    const initial = confirm('将用文件「'+ file.name +'」中的 '+ incoming.length +' 条记录和好感度 '+incAff.pts+' 覆盖【这台设备】的聊天、好感度、记忆和日记。不会修改电脑、GitHub Gist 或本机代理口令。请确认已另存当前设备的备份。继续？');
+    if(!initial) {status('已取消，原数据未修改');return;}
+    if(prompt('再次确认覆盖当前设备，请输入「导入电脑备份」：') !== '导入电脑备份') {status('已取消，原数据未修改');return;}
+    // 先锁定自动同步，防止导入过程中被云端历史覆盖。
+    clearTimeout(syncTimer);
+    store.set(SYNC_LOCK_KEY, true);
+    // 先确认这些数据可写：若浏览器存储空间不足，恢复快照。
+    const keys=['kb_chat','kb_aff','kb_diaries','kb_settings','kb_memory_signature','kb_sync_at'];
+    const before={}; keys.forEach(k => before[k]=localStorage.getItem(k));
+    try{
+      const mergedSettings={...settings};
+      // 只覆盖故事本身；令牌、云端 ID、API 密钥、代理地址以及设备外观配置均保持不变。
+      for(const key of ['name','memo','memoryV2','milk','uname']){
+        if(Object.prototype.hasOwnProperty.call(incSettings,key)) mergedSettings[key]=incSettings[key];
+      }
+      localStorage.setItem('kb_chat',JSON.stringify(incoming));
+      localStorage.setItem('kb_aff',JSON.stringify(incAff));
+      localStorage.setItem('kb_diaries',JSON.stringify(incDiaries));
+      localStorage.setItem('kb_settings',JSON.stringify(mergedSettings));
+      localStorage.removeItem('kb_memory_signature');
+      localStorage.setItem('kb_sync_at',JSON.stringify(0));
+    } catch(writeErr){
+      keys.forEach(k=>{try {if(before[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,before[k]);}catch(e){}});
+      throw new Error('写入失败，已尝试恢复原数据：'+writeErr.message);
+    }
+    status('已完成本机导入；自动同步继续锁定。正在重新载入...');
+    alert('本机导入完成。请核对聊天、等级和记忆；两端尚未恢复自动云同步。');
+    location.reload();
+  }catch(err){status('未导入：'+err.message);alert('备份导入失败：'+err.message);}
+}
 let storyBackupReady = false;
 function storyStatus(t){
  const e=document.getElementById('storyHint');if(e)e.textContent=t;
@@ -966,16 +1052,19 @@ function applyName(){
 
 let proactiveBusy = false;
 function fireProactive(){
-  if(proactiveBusy) return;
+  if(proactiveBusy || document.hidden) return;
+  const lastTry = store.get('kb_last_proactive_attempt',0);
+  if(Date.now()-lastTry < 30*60*1000) return;
   proactiveBusy = true;
   showTyping(true);
   const d = new Date();
-  callBear(`\n\n（现在由你先发起对话：时间是${daypart(d.getHours())} ${ampmTime()}。她有一阵没说话了。从结构化记忆的未完成话题、你自己的日常、电影、小说、音乐、美学思考中选择一个自然切入点，避免总围绕她刚说过的话。若档案里有她喜欢的电影、文学作品或曾储备的作品信息，可偶尔主动分享一个具体的联想或观点并邀请她讨论；不确定的作品细节不要编造，不要假装刚看过某部作品或真实经历。不要连续两次采用同一类话题。结合当前时段，用1-2条消息自然开场。当作正常聊天，不要提及"开场"二字。）`)
+  store.set('kb_last_proactive_attempt',Date.now());
+  callBear(`\n\n【主动发起聊天·事件保护】当前北京时间${zoneClock('Asia/Shanghai')}，首尔时间${zoneClock('Asia/Seoul')}。这是一次自然的主动问候，不是剧情推进指令。你可以谈自己的工作感受、观察或新想法，但不能因为本次推送就推进到收工、回家、出发等新阶段。你们共同约定的事情不能擅自完成；绝不假装她已回应。表达简洁，避免“然后”连用。她有一阵没说话了。从结构化记忆的未完成话题、你自己的日常、电影、小说、音乐、美学思考中选择一个自然切入点，避免总围绕她刚说过的话。若档案里有她喜欢的电影、文学作品或曾储备的作品信息，可偶尔主动分享一个具体的联想或观点并邀请她讨论；不确定的作品细节不要编造，不要假装刚看过某部作品或真实经历。不要连续两次采用同一类话题。结合当前时段，用1-2条消息自然开场。当作正常聊天，不要提及"开场"二字。）`)
     .then(reply => {
       showTyping(false); proactiveBusy = false;
       if(badReply(reply) || !reply) return;
       reply.split('|||').map(s=>s.trim()).filter(Boolean).slice(0,3).forEach((p,i)=>{
-        setTimeout(()=>{ history.push({role:'bear', content:p, t:Date.now()}); addBubble('bear', p); store.set('kb_chat', history); if(i===Math.min(2, reply.split('|||').map(s=>s.trim()).filter(Boolean).length-1)){ maybeUpdateMemory(true); schedulePush(); } }, i*1000);
+        setTimeout(()=>{ history.push({role:'bear', content:p, t:Date.now()}); addBubble('bear', p); store.set('kb_chat', history); if(i===Math.min(2, reply.split('|||').map(s=>s.trim()).filter(Boolean).length-1)){ schedulePush(); } }, i*1000);
       });
     })
     .catch(()=>{ showTyping(false); proactiveBusy = false; });
@@ -986,7 +1075,7 @@ function maybeProactive(){
   const now = Date.now();
   const lastOpen = store.get('kb_lastopen', 0);
   store.set('kb_lastopen', now);
-  if(now - lastOpen >= 6*3600*1000) setTimeout(fireProactive, 1200);
+  if(now - lastOpen >= 6*3600*1000 && !document.hidden) setTimeout(fireProactive, 1200);
 }
 
 /* 她一小时没说话 → 他主动 */
@@ -1005,7 +1094,8 @@ document.getElementById('topAv').src = 'data:image/jpeg;base64,' + BEAR_AV;
 applyName();
 applyAff();
 renderAll();
-if(settings.token) syncPull();
+if(settings.token && !syncLocked()) setTimeout(syncPull, 250);
+if(syncLocked()) syncStatus('检测到历史分歧：自动同步已锁定，本地聊天可正常使用。');
 maybeProactive();
 // 临时停用旧 Service Worker，避免 iPhone Safari 继续加载旧缓存。
 // 注意：如果旧 SW 已拦截了 HTML 请求，此处只有在页面成功加载后才会执行。
