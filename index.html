@@ -362,7 +362,8 @@ function bearHTML(text){
   return out;
 }
 
-function addBubble(role, text, t, img){
+function addBubble(role, text, t, img, options){
+  options = options || {};
   const row = document.createElement('div');
   row.className = 'row ' + (role === 'user' ? 'me' : 'bear');
   const meAv = settings.myav
@@ -374,8 +375,9 @@ function addBubble(role, text, t, img){
   row.innerHTML = (role==='user' ? meAv :
       `<div class="bavatar"><img src="data:image/jpeg;base64,${BEAR_AV}"></div>`)
     + `<div><div class="bubble">${inner}</div><div class="time">${fmtTime(t||Date.now())}</div></div>`;
-  chatEl.appendChild(row);
-  chatEl.scrollTop = chatEl.scrollHeight;
+  if(options.before) chatEl.insertBefore(row, options.before);
+  else chatEl.appendChild(row);
+  if(!options.noScroll) chatEl.scrollTop = chatEl.scrollHeight;
 }
 function addSys(text){
   const d = document.createElement('div');
@@ -397,15 +399,68 @@ function applyBg(){
   if(settings.bgimg){ chatEl.style.backgroundImage = `url(${settings.bgimg})`; }
   else { chatEl.style.backgroundImage = 'none'; chatEl.style.background = settings.bg || '#FFF6EC'; }
 }
+// 手机启动优化：仅渲染最近 50 条。完整 history 保留在原有存储与同步中。
+// 上滑或点按钮补载更早的 50 条，不改消息顺序、时间戳、记忆或好感度。
+const CHAT_RENDER_BATCH = 50;
+let renderedHistoryStart = 0;
+let olderHistoryButton = null;
+let olderLoading = false;
+function makeOlderHistoryButton(){
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.style.cssText = 'display:block;margin:12px auto 18px;padding:10px 18px;border:1px solid #e7d3ba;border-radius:20px;background:#fff9f0;color:#8b6247;font-size:14px;cursor:pointer;max-width:88%;';
+  b.addEventListener('click', loadOlderHistory);
+  return b;
+}
+function updateOlderHistoryButton(){
+  if(!olderHistoryButton) return;
+  olderHistoryButton.textContent = renderedHistoryStart > 0
+    ? '查看更早聊天（还剩 ' + renderedHistoryStart + ' 条）'
+    : '已经显示全部聊天';
+  olderHistoryButton.style.display = renderedHistoryStart > 0 ? 'block' : 'none';
+}
+function loadOlderHistory(){
+  if(olderLoading || renderedHistoryStart <= 0 || !olderHistoryButton) return;
+  olderLoading = true;
+  const beforeHeight = chatEl.scrollHeight;
+  const beforeTop = chatEl.scrollTop;
+  const newStart = Math.max(0, renderedHistoryStart - CHAT_RENDER_BATCH);
+  const anchor = olderHistoryButton.nextSibling;
+  // 插入到按钮之后，先后顺序与 history 完全相同。
+  for(let i=newStart;i<renderedHistoryStart;i++){
+    const m=history[i];
+    addBubble(m.role,m.content,m.t,undefined,{before:anchor,noScroll:true});
+  }
+  renderedHistoryStart = newStart;
+  updateOlderHistoryButton();
+  chatEl.scrollTop = beforeTop + (chatEl.scrollHeight - beforeHeight);
+  olderLoading = false;
+}
 function renderAll(){
   chatEl.innerHTML = '';
+  olderHistoryButton = null;
   applyBg();
   if(history.length === 0){
-    setTimeout(()=>{ addBubble('bear', '……是' + userName() + '吗'); addSys('你们的故事从这里开始'); }, 400);
+    renderedHistoryStart = 0;
+    setTimeout(()=>{ if(history.length===0){ addBubble('bear', '……是' + userName() + '吗'); addSys('你们的故事从这里开始'); } }, 400);
     return;
   }
-  history.forEach(m => addBubble(m.role, m.content, m.t));
+  renderedHistoryStart = Math.max(0, history.length - CHAT_RENDER_BATCH);
+  olderHistoryButton = makeOlderHistoryButton();
+  chatEl.appendChild(olderHistoryButton);
+  updateOlderHistoryButton();
+  // 首次创建聊天气泡期间不逐条计算高度 / 触发滚动。
+  for(let i=renderedHistoryStart;i<history.length;i++){
+    const m=history[i];
+    addBubble(m.role,m.content,m.t,undefined,{noScroll:true});
+  }
+  chatEl.scrollTop = chatEl.scrollHeight;
 }
+// 用户向上滚动时按需加载；按钮也可以手动补载。
+chatEl.addEventListener('scroll', ()=>{
+  if(renderedHistoryStart<=0 || olderLoading || chatEl.scrollTop>120) return;
+  loadOlderHistory();
+},{passive:true});
 
 function recentConversationClues(){
   // Include both speakers' earlier messages, including proactive messages.
