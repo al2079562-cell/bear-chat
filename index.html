@@ -137,6 +137,15 @@
     <input id="sToken" placeholder="请填写新的 GitHub 令牌">
     <div style="font-size:12px;color:#C4A586;margin-top:4px;" id="syncHint">未开启同步</div>
     <button class="btn ghost" style="margin-top:8px;padding:8px;font-size:13px" onclick="restoreFromCloud()">从云端历史恢复（记录丢失时用）</button>
+    <div style="margin-top:12px;padding:11px;border:1px solid #D8BFA4;border-radius:12px;background:#FFF9F0">
+      <b style="font-size:13px;color:#76563D">双端冲突解锁 · 定向覆盖</b>
+      <div style="font-size:12px;margin-top:6px;line-height:1.65;color:#8C735F">先分别导出两端 JSON 备份。电脑先点「以这台设备覆盖云端」，上传验证成功后，将显示的 Gist ID 复制到手机；手机再点「以云端覆盖这台设备」。请勿反向操作。</div>
+      <div style="margin-top:8px;font-size:12px" id="directSyncInfo">正在读取同步配置…</div>
+      <button class="btn ghost" style="width:100%;margin-top:8px" onclick="directSyncPublish()">① 电脑端：以这台设备覆盖云端</button>
+      <input id="directSyncGist" placeholder="手机端粘贴电脑的 Gist ID（不是令牌）" style="margin-top:8px" />
+      <button class="btn ghost" style="width:100%;margin-top:8px" onclick="directSyncReceive()">② 手机端：以云端覆盖这台设备</button>
+      <div style="font-size:12px;margin-top:7px;white-space:pre-wrap" id="directSyncStatus"></div>
+    </div>
   </div>
   <div class="field"><label>代理地址（腾讯云函数网址）</label>
     <input id="sUrl" placeholder="https://xxx.workers.dev"></div>
@@ -809,6 +818,99 @@ async function syncPush(){
   finally { syncBusy = false; }
 }
 
+/* ===== 2026-11-03 定向恢复同步：一次性显式覆盖，不移除冲突检测 ===== */
+function directSyncStatus(message){
+  const el=document.getElementById('directSyncStatus'); if(el) el.textContent=message;
+}
+function directSyncInfo(){
+  const el=document.getElementById('directSyncInfo');
+  if(el) el.textContent='本机同步锁：'+(syncLocked()?'锁定':'未锁定')+'；当前云端 Gist ID：'+(settings.gistId||'未绑定')+'；文件：'+syncFilename();
+}
+async function directReadRemote(id,filename){
+  const gist=await gistRequest('GET','/gists/'+id);
+  const f=gist.files&&gist.files[filename];
+  if(!f) throw new Error('所选 Gist 中没有 '+filename+'，请核对电脑端的 Gist ID 和文件名');
+  let d;
+  if(f.truncated || !f.content){
+    if(!f.raw_url) throw new Error('Gist 内容不可读取');
+    const r=await fetch(f.raw_url,{cache:'no-store'});
+    if(!r.ok) throw new Error('读取 Gist 文件失败 '+r.status);
+    d=await r.json();
+  }else d=JSON.parse(f.content);
+  if(!d||!Array.isArray(d.history)||!d.history.every(m=>m && typeof m.content==='string')||!d.aff)
+    throw new Error('云端聊天数据格式不正确');
+  return d;
+}
+async function directSyncPublish(){
+  if(syncBusy){directSyncStatus('已有同步任务运行，请稍后重试');return;}
+  if(!settings.token){directSyncStatus('请先在本设备保存 GitHub 令牌');return;}
+  if(!Array.isArray(history)||!history.length){directSyncStatus('本地没有聊天记录，禁止覆盖云端');return;}
+  if(!confirm('【电脑端操作】确定已经分别备份电脑与手机吗？这将以当前设备的 '+history.length+' 条聊天记录覆盖原云端故事。'))return;
+  if(prompt('确认以【这台设备】为最终版本，输入「电脑覆盖云端」：')!=='电脑覆盖云端')return;
+  syncBusy=true;clearTimeout(syncTimer);store.set(SYNC_LOCK_KEY,true);
+  try{
+    const data=collectData();let id=settings.gistId;
+    if(id){
+      const old=await gistRequest('GET','/gists/'+id);
+      if(!old.files || !old.files[syncFilename()])throw new Error('原绑定 Gist 缺少 '+syncFilename()+'，已停止；不要创建另一个 Gist');
+      await gistRequest('PATCH','/gists/'+id,{files:{[syncFilename()]:{content:JSON.stringify(data)}}});
+    }else{
+      const g=await gistRequest('POST','/gists',{description:'bear-chat synced master',public:false,files:{[syncFilename()]:{content:JSON.stringify(data)}}});
+      id=g.id;
+      if(!id)throw new Error('新 Gist 创建失败');
+    }
+    const checked=await directReadRemote(id,syncFilename());
+    if(!isChatPrefix(data.history,checked.history)||data.history.length!==checked.history.length||Number(checked.aff?.pts)!==Number(data.aff?.pts))
+      throw new Error('上传后的聊天条数、内容或好感度校验未通过，同步锁保持开启');
+    settings.gistId=id;store.set('kb_settings',settings);
+    store.set('kb_sync_at',Number(checked.updatedAt)||Date.now());
+    store.set(SYNC_LOCK_KEY,false);
+    directSyncStatus('电脑上传并校验成功！共 '+checked.history.length+' 条；好感度 '+checked.aff.pts+'。\nGist ID：'+id+'\n请把这个 ID 填进手机的对应框，再点②。');
+    syncStatus('电脑主版本已写入云端并解除本机同步锁');
+  }catch(e){directSyncStatus('写入/核验失败：'+e.message+'。当前设备仍锁定，未自动执行恢复。');}
+  finally{syncBusy=false;directSyncInfo();}
+}
+async function directSyncReceive(){
+  if(syncBusy){directSyncStatus('已有同步任务运行，请稍后再试');return;}
+  if(!settings.token){directSyncStatus('手机端尚未设置 GitHub 令牌');return;}
+  const entered=(document.getElementById('directSyncGist')?.value||'').trim();
+  const id=entered||settings.gistId;
+  if(!/^[0-9a-f]{20,64}$/i.test(id||'')){directSyncStatus('请先粘贴电脑端显示的 Gist ID');return;}
+  syncBusy=true;clearTimeout(syncTimer);store.set(SYNC_LOCK_KEY,true);
+  try{
+    const filename=syncFilename();const d=await directReadRemote(id,filename);
+    if(!d.history.length) throw new Error('云端为空，拒绝覆盖本地');
+    directSyncStatus('读取成功：云端 '+d.history.length+' 条；好感度 '+d.aff.pts+'。等待确认是否覆盖本设备。');
+    if(!confirm('【手机端操作】确定已经单独导出手机最新 JSON 备份吗？云端有 '+d.history.length+' 条、好感度 '+d.aff.pts+'。将替换本机聊天、好感度、记忆和日记。'))return;
+    if(prompt('最终确认：输入「云端覆盖手机」：')!=='云端覆盖手机')return;
+    const before={};const keys=['kb_chat','kb_aff','kb_diaries','kb_settings','kb_sync_at','kb_memory_signature'];
+    keys.forEach(k=>before[k]=localStorage.getItem(k));
+    const oldSettings={...settings};
+    try{
+      const newSettings={...settings,gistId:id};
+      if(d.settings){
+        for(const k of ['name','memo','milk','memoryV2'])if(Object.prototype.hasOwnProperty.call(d.settings,k))newSettings[k]=d.settings[k];
+      }
+      localStorage.setItem('kb_chat',JSON.stringify(d.history));
+      localStorage.setItem('kb_aff',JSON.stringify(d.aff));
+      localStorage.setItem('kb_diaries',JSON.stringify(Array.isArray(d.diaries)?d.diaries:[]));
+      localStorage.setItem('kb_settings',JSON.stringify(newSettings));
+      localStorage.setItem('kb_sync_at',JSON.stringify(Number(d.updatedAt)||Date.now()));
+      localStorage.removeItem('kb_memory_signature');
+      const verify=JSON.parse(localStorage.getItem('kb_chat')||'null');
+      if(!Array.isArray(verify)||verify.length!==d.history.length)throw new Error('手机保存后核验失败');
+      settings=newSettings;history=d.history;aff=d.aff;
+      store.set(SYNC_LOCK_KEY,false);
+      directSyncStatus('手机已成功导入 '+history.length+' 条并解除本机同步锁。准备刷新…');
+      syncStatus('手机已从电脑主版本恢复；本机同步锁已解除');
+      location.reload();
+    }catch(e){
+      keys.forEach(k=>{try{if(before[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,before[k]);}catch(_){}});
+      settings=oldSettings;throw e;
+    }
+  }catch(e){directSyncStatus('手机恢复失败：'+e.message+'。同步锁保持开启。');}
+  finally{syncBusy=false;directSyncInfo();}
+}
 async function restoreFromCloud(){
   if(syncLocked()){ syncStatus('存在云端分歧：为保护当前手机数据，已禁用直接恢复。请先保留两端备份。'); return; }
   if(!settings.token || !settings.gistId){ syncStatus('先填令牌并保存一次'); return; }
@@ -938,6 +1040,7 @@ function openSettings(){
   document.getElementById('sKey').value = settings.key || '';
   document.getElementById('sMemo').value = settings.memo || '';
   document.getElementById('sToken').value = settings.token || '';
+  directSyncInfo();
   buildSwatches();
   document.getElementById('mask').classList.add('show');
   document.getElementById('sheet').classList.add('show');
