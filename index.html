@@ -136,6 +136,14 @@
   <div class="field"><label>云同步令牌（GitHub Token，只勾 gist 那个）</label>
     <input id="sToken" placeholder="请填写新的 GitHub 令牌">
     <div style="font-size:12px;color:#C4A586;margin-top:4px;" id="syncHint">未开启同步</div>
+    <div style="margin-top:12px;padding:11px;border:1px solid #D8BFA4;border-radius:12px;background:#FFF9F0">
+      <b style="font-size:13px;color:#76563D">手机补传与电脑接收 · 11.11</b>
+      <div class="hint">手机先补传并确认云端校验成功，再到电脑接收。发现独有聊天时会停止，保留两边记录。</div>
+      <button class="btn ghost" style="width:100%;margin-top:8px" onclick="safeSync('check')">检查本机与云端（只读）</button>
+      <button class="btn ghost" style="width:100%;margin-top:8px" onclick="safeSync('upload')">① 手机端：补传到云端</button>
+      <button class="btn ghost" style="width:100%;margin-top:8px" onclick="safeSync('receive')">② 电脑端：接收云端并解锁</button>
+      <div id="safeSyncStatus" role="status" style="margin-top:7px;font-size:12px;white-space:pre-wrap"></div>
+    </div>
     <button class="btn ghost" style="margin-top:8px;padding:8px;font-size:13px" onclick="restoreFromCloud()">从云端历史恢复（记录丢失时用）</button>
     <div style="margin-top:12px;padding:11px;border:1px solid #D8BFA4;border-radius:12px;background:#FFF9F0">
       <b style="font-size:13px;color:#76563D">双端冲突解锁 · 定向覆盖</b>
@@ -724,6 +732,7 @@ function applyRemote(d){
 async function gistRequest(method, path, body){
   const r = await fetch('https://api.github.com' + path, {
     method,
+    cache: 'no-store',
     headers: { 'Authorization': 'token ' + settings.token, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github+json' },
     body: body ? JSON.stringify(body) : undefined
   });
@@ -757,24 +766,20 @@ async function syncPull(){
       if(found){ settings.gistId = found.id; store.set('kb_settings', settings); }
       else { syncStatus('还没有云端备份，聊一句后会自动创建'); return; }
     }
-    const g = await gistRequest('GET', '/gists/' + settings.gistId);
-    const raw = g.files[syncFilename()] && g.files[syncFilename()].raw_url;
-    if(!raw) return;
-    const d = await (await fetch(raw)).json();
-    const lastKnown = store.get('kb_sync_at', 0);
-    if(d.updatedAt && d.updatedAt > lastKnown){
-      if(pullFile !== syncFilename()) return;
-      const remoteHistory = Array.isArray(d.history) ? d.history : [];
-      if(!isChatPrefix(history,remoteHistory)){
-        syncConflict('云端记录与本地不一致');
-        return;
-      }
-      if(applyRemote(d)){
-        store.set('kb_sync_at', d.updatedAt);
-        syncStatus('已从云端同步 ' + fmtTime(d.updatedAt));
-        addSys('已从云端同步你们的回忆');
-      }
-    } else syncStatus('云端暂无更新');
+    const id = settings.gistId;
+    const d = await directReadRemote(id, pullFile);
+    if(id !== settings.gistId || pullFile !== syncFilename() || syncLocked()) return;
+    const relation = syncHistoryRelation(history, d.history);
+    if(relation === 'conflict'){
+      syncConflict('云端记录与本地不一致');
+    } else if(relation === 'remote'){
+      saveSyncedStory(id, d);
+      syncStatus('已从云端接收 ' + d.history.length + ' 条聊天');
+    } else if(relation === 'local'){
+      syncStatus('本机有待上传的聊天，可在设置里补传');
+    } else {
+      syncStatus('聊天已一致（' + history.length + ' 条）');
+    }
   }catch(e){ syncStatus('同步失败：' + e.message); }
   finally { syncBusy = false; }
 }
@@ -782,35 +787,37 @@ async function syncPush(){
   if(!settings.token || syncLocked() || syncBusy) return;
   syncBusy = true;
   try{
-    const data = collectData();
-    // 防护：本地记录为空、云端却有记录时 → 改为拉取，绝不用空数据覆盖云端
-    if((!data.history || data.history.length === 0) && settings.gistId){
-      try{
-        const g0 = await gistRequest('GET', '/gists/' + settings.gistId);
-        const raw0 = g0.files[syncFilename()] && g0.files[syncFilename()].raw_url;
-        if(raw0){
-          const remote0 = await (await fetch(raw0)).json();
-          if((remote0.history || []).length > 0){ syncPull(); return; }
-        }
-      }catch(e0){}
-    }
-    if(!settings.gistId){
-      const g = await gistRequest('POST', '/gists', { description:'bear-chat backup', public:false, files:{ [syncFilename()]: { content: JSON.stringify(data) } } });
-      settings.gistId = g.id; store.set('kb_settings', settings);
+    let data;
+    const id = settings.gistId;
+    const filename = syncFilename();
+    if(!id){
+      data = collectData();
+      if(!data.history.length) return;
+      const g = await gistRequest('POST', '/gists', { description:'bear-chat backup', public:false, files:{ [filename]: { content: JSON.stringify(data) } } });
+      if(!g.id) throw new Error('新建云端备份失败');
+      settings.gistId = g.id;
+      store.set('kb_settings', settings);
     } else {
-      const gCheck = await gistRequest('GET', '/gists/' + settings.gistId);
-      const rawCheck = gCheck.files[syncFilename()] && gCheck.files[syncFilename()].raw_url;
-      if(rawCheck){
-        const checkResponse=await fetch(rawCheck,{cache:'no-store'});
-        if(!checkResponse.ok) throw new Error('读取云端版本失败 ' + checkResponse.status);
-        const remoteCheck=await checkResponse.json();
-        const remoteHistory=Array.isArray(remoteCheck.history)?remoteCheck.history:[];
-        if(!isChatPrefix(remoteHistory,data.history)){
-          syncConflict('云端有本地尚未包含的聊天');
-          return;
-        }
+      const remote = await directReadRemote(id, filename);
+      if(id !== settings.gistId || filename !== syncFilename() || syncLocked()) return;
+      const relation = syncHistoryRelation(history, remote.history);
+      if(relation === 'conflict'){
+        syncConflict('云端有本地尚未包含的聊天');
+        return;
       }
-      await gistRequest('PATCH', '/gists/' + settings.gistId, { files:{ [syncFilename()]: { content: JSON.stringify(data) } } });
+      if(relation === 'remote'){
+        saveSyncedStory(id, remote);
+        syncStatus('已从云端接收 ' + remote.history.length + ' 条聊天');
+        return;
+      }
+      // 同样的聊天也可能有来自另一台设备的日记或记忆更新。
+      if(relation === 'same' && Number(remote.updatedAt) > Number(store.get('kb_sync_at', 0))){
+        syncStatus('聊天已一致，云端另有更新；可在设置里核对后接收');
+        return;
+      }
+      data = collectData();
+      if(!data.history.length) return;
+      await gistRequest('PATCH', '/gists/'+id, { files:{ [filename]: { content: JSON.stringify(data) } } });
     }
     store.set('kb_sync_at', data.updatedAt);
     syncStatus('已同步 ' + fmtTime(data.updatedAt));
@@ -831,9 +838,11 @@ async function directReadRemote(id,filename){
   const f=gist.files&&gist.files[filename];
   if(!f) throw new Error('所选 Gist 中没有 '+filename+'，请核对电脑端的 Gist ID 和文件名');
   let d;
-  if(f.truncated || !f.content){
+  if(f.truncated || typeof f.content !== 'string'){
     if(!f.raw_url) throw new Error('Gist 内容不可读取');
-    const r=await fetch(f.raw_url,{cache:'no-store'});
+    const r=await fetch(f.raw_url,{cache:'no-store'}).catch(()=>{
+      throw new Error('无法连接 GitHub 的备份文件地址，请换网络后重试');
+    });
     if(!r.ok) throw new Error('读取 Gist 文件失败 '+r.status);
     d=await r.json();
   }else d=JSON.parse(f.content);
@@ -841,6 +850,126 @@ async function directReadRemote(id,filename){
     throw new Error('云端聊天数据格式不正确');
   return d;
 }
+function syncHistoryRelation(local, remote){
+  if(isChatPrefix(local, remote)) return local.length === remote.length ? 'same' : 'remote';
+  if(isChatPrefix(remote, local)) return 'local';
+  return 'conflict';
+}
+
+function saveSyncedStory(id, data){
+  const newSettings = {...settings, gistId:id};
+  for(const key of ['name','memo','milk','memoryV2']){
+    if(Object.prototype.hasOwnProperty.call(data.settings || {}, key)) newSettings[key] = data.settings[key];
+  }
+  if(data.settings?.memoryV2) newSettings.memoryV2 = normalizeMemoryV2(data.settings.memoryV2);
+
+  const values = {
+    kb_chat: data.history,
+    kb_aff: data.aff,
+    kb_settings: newSettings,
+    kb_sync_at: Number(data.updatedAt) || Date.now(),
+    [SYNC_LOCK_KEY]: false
+  };
+  if(Array.isArray(data.diaries)) values.kb_diaries = data.diaries;
+  const keys = [...Object.keys(values), 'kb_memory_signature'];
+  const before = keys.map(key => [key, localStorage.getItem(key)]);
+  try{
+    for(const [key, value] of Object.entries(values)) localStorage.setItem(key, JSON.stringify(value));
+    localStorage.removeItem('kb_memory_signature');
+  }catch(error){
+    for(const [key, value] of before){
+      try{
+        if(value === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
+      }catch(rollbackError){}
+    }
+    throw error;
+  }
+  settings = newSettings;
+  history = data.history;
+  aff = data.aff;
+  syncConflictNotified = false;
+  applyName();
+  applyAff();
+  renderAll();
+}
+
+async function safeSync(action){
+  const status = document.getElementById('safeSyncStatus');
+  if(syncBusy){status.textContent = '已有同步任务运行，请稍后重试。';return;}
+  const id = settings.gistId;
+  const filename = syncFilename();
+  const token = settings.token;
+  if(!token || !/^[0-9a-f]{20,64}$/i.test(id || '')){
+    status.textContent = '本机尚未绑定原来的 Gist，请先核对同步设置。';
+    return;
+  }
+
+  syncBusy = true;
+  let uploadAttempted = false;
+  try{
+    status.textContent = '正在读取云端备份…';
+    const remote = await directReadRemote(id, filename);
+    if(id !== settings.gistId || filename !== syncFilename() || token !== settings.token){
+      throw new Error('同步配置已变更，请重新检查');
+    }
+    const relation = syncHistoryRelation(history, remote.history);
+    const summary = '本机 ' + history.length + ' 条，云端 ' + remote.history.length + ' 条。';
+    const descriptions = {
+      same: '聊天一致。',
+      local: '云端聊天是本机的较早版本，可以从本机补传。',
+      remote: '本机聊天是云端的较早版本，可以接收云端。',
+      conflict: '两边都有不同的聊天，已停止。请保留两边备份。'
+    };
+    status.textContent = summary + descriptions[relation];
+    if(action === 'check') return;
+    if(relation === 'conflict'){
+      syncConflict('本机与云端都有独有聊天');
+      return;
+    }
+
+    if(action === 'receive'){
+      if(relation === 'local' || !remote.history.length) return;
+      if(!confirm(summary + '接收云端聊天、好感度、记忆和日记并解除本机同步锁？请先确认本机备份已保存。')) return;
+      saveSyncedStory(id, remote);
+      syncStatus('已接收云端并解除本机同步锁');
+      status.textContent = '已接收并解锁，共 ' + history.length + ' 条聊天。';
+      return;
+    }
+
+    if(relation === 'remote' || !history.length) return;
+    if(!confirm(summary + '以本机的聊天、好感度、记忆和日记更新当前云端备份？请先确认两端备份已保存。')) return;
+    const data = collectData();
+    const payload = JSON.stringify(data);
+    const latest = await directReadRemote(id, filename);
+    if(id !== settings.gistId || filename !== syncFilename() || token !== settings.token ||
+      JSON.stringify(latest) !== JSON.stringify(remote) ||
+      JSON.stringify({...collectData(), updatedAt:data.updatedAt}) !== payload){
+      throw new Error('本机或云端在核对期间发生变化，请重新检查');
+    }
+    uploadAttempted = true;
+    await gistRequest('PATCH', '/gists/'+id, {files:{[filename]:{content:payload}}});
+    const verified = await directReadRemote(id, filename);
+    if(JSON.stringify(verified) !== payload) throw new Error('云端回读与上传内容不同');
+    if(id !== settings.gistId || filename !== syncFilename() || token !== settings.token){
+      throw new Error('上传期间切换了同步配置');
+    }
+    localStorage.setItem('kb_sync_at', JSON.stringify(data.updatedAt));
+    localStorage.setItem(SYNC_LOCK_KEY, 'false');
+    syncConflictNotified = false;
+    syncStatus('手机记录已上传并通过云端校验');
+    status.textContent = '云端已校验 ' + verified.history.length + ' 条聊天。现在可到电脑端接收。';
+    if(JSON.stringify({...collectData(), updatedAt:data.updatedAt}) !== payload) schedulePush();
+  }catch(error){
+    status.textContent = uploadAttempted
+      ? '上传结果尚未确认：' + error.message + '。请先点「检查本机与云端」。'
+      : '同步检查或接收失败：' + error.message;
+  }finally{
+    syncBusy = false;
+    directSyncInfo();
+  }
+}
+
 async function directSyncPublish(){
   if(syncBusy){directSyncStatus('已有同步任务运行，请稍后重试');return;}
   if(!settings.token){directSyncStatus('请先在本设备保存 GitHub 令牌');return;}
@@ -883,31 +1012,10 @@ async function directSyncReceive(){
     directSyncStatus('读取成功：云端 '+d.history.length+' 条；好感度 '+d.aff.pts+'。等待确认是否覆盖本设备。');
     if(!confirm('【手机端操作】确定已经单独导出手机最新 JSON 备份吗？云端有 '+d.history.length+' 条、好感度 '+d.aff.pts+'。将替换本机聊天、好感度、记忆和日记。'))return;
     if(prompt('最终确认：输入「云端覆盖手机」：')!=='云端覆盖手机')return;
-    const before={};const keys=['kb_chat','kb_aff','kb_diaries','kb_settings','kb_sync_at','kb_memory_signature'];
-    keys.forEach(k=>before[k]=localStorage.getItem(k));
-    const oldSettings={...settings};
-    try{
-      const newSettings={...settings,gistId:id};
-      if(d.settings){
-        for(const k of ['name','memo','milk','memoryV2'])if(Object.prototype.hasOwnProperty.call(d.settings,k))newSettings[k]=d.settings[k];
-      }
-      localStorage.setItem('kb_chat',JSON.stringify(d.history));
-      localStorage.setItem('kb_aff',JSON.stringify(d.aff));
-      localStorage.setItem('kb_diaries',JSON.stringify(Array.isArray(d.diaries)?d.diaries:[]));
-      localStorage.setItem('kb_settings',JSON.stringify(newSettings));
-      localStorage.setItem('kb_sync_at',JSON.stringify(Number(d.updatedAt)||Date.now()));
-      localStorage.removeItem('kb_memory_signature');
-      const verify=JSON.parse(localStorage.getItem('kb_chat')||'null');
-      if(!Array.isArray(verify)||verify.length!==d.history.length)throw new Error('手机保存后核验失败');
-      settings=newSettings;history=d.history;aff=d.aff;
-      store.set(SYNC_LOCK_KEY,false);
-      directSyncStatus('手机已成功导入 '+history.length+' 条并解除本机同步锁。准备刷新…');
-      syncStatus('手机已从电脑主版本恢复；本机同步锁已解除');
-      location.reload();
-    }catch(e){
-      keys.forEach(k=>{try{if(before[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,before[k]);}catch(_){}});
-      settings=oldSettings;throw e;
-    }
+    saveSyncedStory(id, d);
+    directSyncStatus('手机已成功导入 '+history.length+' 条并解除本机同步锁。准备刷新…');
+    syncStatus('手机已从电脑主版本恢复；本机同步锁已解除');
+    location.reload();
   }catch(e){directSyncStatus('手机恢复失败：'+e.message+'。同步锁保持开启。');}
   finally{syncBusy=false;directSyncInfo();}
 }
@@ -1253,6 +1361,12 @@ applyName();
 applyAff();
 renderAll();
 if(settings.token && !syncLocked()) setTimeout(syncPull, 250);
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden) syncPull();
+});
+setInterval(()=>{
+  if(!document.hidden) syncPull();
+}, 45000);
 if(syncLocked()) syncStatus('检测到历史分歧：自动同步已锁定，本地聊天可正常使用。');
 maybeProactive();
 // 临时停用旧 Service Worker，避免 iPhone Safari 继续加载旧缓存。
